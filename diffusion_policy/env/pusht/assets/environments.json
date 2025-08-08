@@ -1,6 +1,20 @@
 {
-    "A" : "A.json",
-    "B": "B.json",
-    "C": "C.json",
-    "T": "T.json"
+    "A" : {"file" : "A.json", "scale" : 30},
+    "B": {"file" : "B.json", "scale" : 30},
+    "C": {"file" : "C.json", "scale" : 30},
+    "D": {"file" : "D.json", "scale" : 30},
+    "E": {"file" : "E.json", "scale" : 60},
+    "F": {"file" : "F.json", "scale" : 60},
+    "G": {"file" : "G.json", "scale" : 30},
+    "H": {"file" : "H.json", "scale" : 30},
+    "I": {"file" : "I.json", "scale" : 30},
+    "J": {"file" : "J.json", "scale" : 30},
+    "K": {"file" : "K.json", "scale" : 30},
+    "L": {"file" : "L.json", "scale" : 30},
+    "M": {"file" : "M.json", "scale" : 60},
+    "N": {"file" : "N.json", "scale" : 30},
+    "O": {"file" : "O.json", "scale" : 30},
+    "P": {"file" : "P.json", "scale" : 30},
+    "T" : {"file" : "T.json", "scale" : 30},
+    "V" : {"file" : "V.json", "scale" : 30}
 }

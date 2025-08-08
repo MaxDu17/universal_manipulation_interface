@@ -314,7 +314,7 @@ class PushGeneralEnv(gym.Env):
         # Add agent, block, and goal zone.
         self.agent = self.add_circle((256, 400), 15)
         # self.block = self.add_tee((256, 300), 0)
-        self.block = self.add_object(os.path.join(SHAPES_DIR, self.current_environment), (256, 300), 0)
+        self.block = self.add_object(os.path.join(SHAPES_DIR, self.current_environment["file"]), (256, 300), 0, scale = self.current_environment["scale"])
 
         self.goal_color = pygame.Color('LightGreen')
         self.goal_pose = np.array([256,256,np.pi/4])  # x, y, theta (in radians)

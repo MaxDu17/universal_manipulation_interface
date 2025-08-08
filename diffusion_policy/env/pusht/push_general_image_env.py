@@ -73,8 +73,11 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt 
 
     env = PushGeneralImageEnv()
-    env.load_env("T")
-    env._setup()
-    obs = env._get_obs()
-    img = np.transpose(obs["image"], (1, 2, 0))
-    plt.imsave("test.png", img)
+    letter_list = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "T", "V"]
+    for letter in letter_list:
+        print(letter)
+        env.load_env(letter)
+        env._setup()
+        obs = env._get_obs()
+        img = np.transpose(obs["image"], (1, 2, 0))
+        plt.imsave(f"{letter}.png", img)
