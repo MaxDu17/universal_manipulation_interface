@@ -15,6 +15,14 @@
     "N": {"file" : "N.json", "scale" : 30},
     "O": {"file" : "O.json", "scale" : 30},
     "P": {"file" : "P.json", "scale" : 30},
+    "Q": {"file" : "Q.json", "scale" : 30},
+    "R": {"file" : "R.json", "scale" : 30},
+    "S": {"file" : "S.json", "scale" : 30},
     "T" : {"file" : "T.json", "scale" : 30},
-    "V" : {"file" : "V.json", "scale" : 30}
+    "U" : {"file" : "U.json", "scale" : 30},
+    "V" : {"file" : "V.json", "scale" : 30},
+    "W" : {"file" : "W.json", "scale" : 30},
+    "X" : {"file" : "X.json", "scale" : 30},
+    "Y" : {"file" : "Y.json", "scale" : 30},
+    "Z" : {"file" : "Z.json", "scale" : 30}
 }

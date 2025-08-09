@@ -14,7 +14,7 @@ from diffusion_policy.env.pusht.pymunk_override import DrawOptions
 import json 
 
 import os 
-SHAPES_DIR = os.path.join(os.path.dirname(__file__), 'assets')
+SHAPES_DIR = os.path.join(os.path.dirname(__file__))
 
 
 def pymunk_to_shapely(body, shapes):
@@ -39,6 +39,7 @@ class PushGeneralEnv(gym.Env):
             render_action=True,
             render_size=96,
             reset_to_state=None,
+            environments=None
         ):
         self._seed = None
         self.seed()
@@ -50,8 +51,7 @@ class PushGeneralEnv(gym.Env):
         self.control_hz = self.metadata['video.frames_per_second']
         # legcay set_state for data compatibility
         self.legacy = legacy
-
-        self.environments = json.load(open(os.path.join(SHAPES_DIR, "environments.json"), "r"))
+        self.environments = json.load(open(os.path.join(SHAPES_DIR, environments), "r"))
         self.current_environment = None 
 
         # agent_pos, block_pos, block_angle
