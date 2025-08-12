@@ -25,10 +25,10 @@ def generate_t_to_cross(num_iterations):
                 [ 2, step + 1],
                 [ 2, step],
                 [-2, step]],
-                "vertical": [[-0.5, 0],
+                "vertical": [[-0.5, 1],
                 [-0.5, 4],
                 [ 0.5, 4],
-                [ 0.5, 0]]
+                [ 0.5, 1]]
             }
             json.dump(params, f)
     with open(os.path.join(root_dir, "t_cross_envs.json"), "w") as f:
