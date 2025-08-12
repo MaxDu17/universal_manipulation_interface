@@ -356,8 +356,7 @@ class PushGeneralEnv(gym.Env):
         inertia_list = list() 
         vertices_list = list() 
         mass = 1
-        for labels, vertices in config_dict.items(): 
-            # TODO: scale 
+        for vertices in config_dict: # per shape 
             scaled_vertex = [[scale * q for q in k] for k in vertices] # scale each component by scale 
             vertices_list.append(scaled_vertex)
             inertia = pymunk.moment_for_poly(mass, vertices=scaled_vertex)
