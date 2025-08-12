@@ -74,12 +74,19 @@ if __name__ == "__main__":
     import imageio 
     import matplotlib.pyplot as plt 
 
-    env = PushGeneralImageEnv()
-    letter_list = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "T", "V"]
-    for letter in letter_list:
-        print(letter)
-        env.load_env(letter)
+    env = PushGeneralImageEnv(environments = "assets/procedural/t_cross_envs.json")
+    # letter_list = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "T", "V"]
+    # for letter in letter_list:
+    #     print(letter)
+    #     env.load_env(letter)
+    #     env._setup()
+    #     obs = env._get_obs()
+    #     img = np.transpose(obs["image"], (1, 2, 0))
+    #     plt.imsave(f"{letter}.png", img)
+
+    for i in range(11):
+        env.load_env(f"t_cross_{i}")
         env._setup()
         obs = env._get_obs()
         img = np.transpose(obs["image"], (1, 2, 0))
-        plt.imsave(f"{letter}.png", img)
+        plt.imsave(f"t_cross_{i}.png", img)
