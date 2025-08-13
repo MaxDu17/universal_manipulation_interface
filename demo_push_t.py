@@ -2,6 +2,7 @@ import numpy as np
 import click
 from diffusion_policy.common.replay_buffer import ReplayBuffer
 from diffusion_policy.env.pusht.pusht_keypoints_env import PushTKeypointsEnv
+from diffusion_policy.env.pusht.pusht_env import PushTEnv
 import pygame
 
 @click.command()
@@ -28,7 +29,10 @@ def main(output, render_size, control_hz):
 
     # create PushT env with keypoints
     kp_kwargs = PushTKeypointsEnv.genenerate_keypoint_manager_params()
+
     env = PushTKeypointsEnv(render_size=render_size, render_action=False, **kp_kwargs)
+
+    # env = PushTEnv(render_size=render_size, render_action=False) #, **kp_kwargs)
     agent = env.teleop_agent()
     clock = pygame.time.Clock()
     
@@ -89,6 +93,7 @@ def main(output, render_size, control_hz):
                 # discard unused information such as visibility mask and agent pos
                 # for compatibility
                 keypoint = obs.reshape(2,-1)[0].reshape(-1,2)[:9]
+                # print(keypoint)
                 data = {
                     'img': img,
                     'state': np.float32(state),

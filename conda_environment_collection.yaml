@@ -1,0 +1,23 @@
+name: umi
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - pip=22.1
+  - numpy=1.24
+  - scipy=1.11
+  - numba=0.57
+  - pandas=2.1
+  - py-opencv=4.7
+  - ipykernel=6.23
+  - matplotlib=3.7
+  - av=10.0
+  - pyyaml=6.0
+  - tqdm=4.65
+  - zarr=2.16
+  - numcodecs=0.11
+  - gym=0.21.0
+  - scikit-image
+  - click
+  - pygame
+  - pymunk==6.2.1

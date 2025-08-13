@@ -9,10 +9,10 @@ import os
 
 
 @click.command()
-@click.option('-o', '--output_dir', required=True)
+@click.option('-o', '--output_dir', default="DATA/", type = str)
 @click.option('-rs', '--render_size', default=96, type=int)
 @click.option('-hz', '--control_hz', default=10, type=int)
-@click.option('-e', '--env_json', default="assets/procedural/t_cross_envs.json", type=str)
+@click.option('-e', '--env_json', default="assets/letters/environments.json", type=str)
 @click.option('-t', '--task', required=True, type=str)
 def main(output_dir, render_size, control_hz, env_json, task):
     """
@@ -35,7 +35,7 @@ def main(output_dir, render_size, control_hz, env_json, task):
 
     # create PushT env with keypoints
     env = PushGeneralEnv(render_size=render_size, render_action=False, environments = env_json)
-    env.load_task(task)
+    env.load_env(task)
 
     agent = env.teleop_agent()
     clock = pygame.time.Clock()

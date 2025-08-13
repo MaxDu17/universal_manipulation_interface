@@ -129,7 +129,7 @@ def coords_to_shapely_polygon(coords: List[Tuple[float,float]]) -> Optional[SPol
 
 def polygon_to_coords(poly: SPolygon) -> List[Tuple[float,float]]:
     ring = list(poly.exterior.coords)[:-1]  # drop repeated last
-    return [(float(x), float(y)) for x,y in ring]
+    return [(float(x) / 30, float(y) / 30)  for x,y in ring]
 
 def is_convex(poly: SPolygon) -> bool:
     coords = list(poly.exterior.coords)[:-1]
@@ -373,7 +373,7 @@ def main():
                     help="Max chord length when sampling curves (smaller = more accurate).")
     ap.add_argument("--simplify", type=float, default=0.5,
                     help="Topology-preserving simplification tolerance (SVG units).")
-    ap.add_argument("--out-json", default="convex_polygons.json",
+    ap.add_argument("--out-json", default="O.json",
                     help="Output JSON file with [[[x,y],...], ...].")
     ap.add_argument("--debug-svg", default="convex_overlay.svg",
                     help="Optional SVG overlay drawing the convex pieces.")

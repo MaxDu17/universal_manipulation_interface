@@ -350,38 +350,124 @@ class PushGeneralEnv(gym.Env):
         shape.color = pygame.Color('LightSlateGray')
         self.space.add(body, shape)
         return body
-    
+
+    def polygon_area(self, vertices):
+        """Shoelace formula for polygon area."""
+        area = 0
+        for i in range(len(vertices)):
+            x1, y1 = vertices[i]
+            x2, y2 = vertices[(i + 1) % len(vertices)]
+            area += x1 * y2 - x2 * y1
+        return abs(area) / 2
+
+
     def add_object(self, json_file, position, angle, scale = 30, color='LightSlateGray', mask=pymunk.ShapeFilter.ALL_MASKS()):
         config_dict = json.load(open(json_file, "r"))
-        inertia_list = list() 
-        vertices_list = list() 
-        mass = 1
-        for vertices in config_dict: # per shape 
-            scaled_vertex = [[scale * q for q in k] for k in vertices] # scale each component by scale 
-            vertices_list.append(scaled_vertex)
-            inertia = pymunk.moment_for_poly(mass, vertices=scaled_vertex)
-            inertia_list.append(inertia)
+        density = 0.001  # mass units per area unit
+        mass_list = []
+        vertices_list = []
 
-        body = pymunk.Body(mass, sum(inertia_list))
-        shape_list = list()
-        for vertex in vertices_list:
-            shape = pymunk.Poly(body, vertex)
+        cog_accum = pymunk.Vec2d(0, 0)
+
+        # First pass: scale vertices, calculate mass, store COMs
+        com_list = []
+        for vertices in config_dict:  # per shape
+            scaled_vertex = [[scale * q for q in k] for k in vertices]  # scale each component by scale
+            vertices_list.append(scaled_vertex)
+
+            area = self.polygon_area(scaled_vertex)
+            mass = density * area
+            mass_list.append(mass)
+
+            # Compute shape COM in world coords (average of vertices)
+            com_x = sum(v[0] for v in scaled_vertex) / len(scaled_vertex)
+            com_y = sum(v[1] for v in scaled_vertex) / len(scaled_vertex)
+            com_list.append((com_x, com_y))
+
+            cog_accum += pymunk.Vec2d(com_x, com_y) * mass
+
+        # Combined center of gravity
+        total_mass = sum(mass_list)
+        cog = cog_accum / total_mass
+        print(mass_list)
+
+        # Second pass: compute total inertia about combined COM
+        total_inertia = 0
+        for mass, verts, (com_x, com_y) in zip(mass_list, vertices_list, com_list):
+            # Convert verts to local coords (relative to shape COM)
+            local_verts = [(x - com_x, y - com_y) for x, y in verts]
+            # Offset from combined COM to shape COM
+            offset = (com_x - cog.x, com_y - cog.y)
+            # Moment about combined COM
+            I = pymunk.moment_for_poly(mass, local_verts, offset=offset)
+            total_inertia += I
+
+        # Create body with correct mass and inertia
+        body = pymunk.Body(total_mass, total_inertia)
+
+        # Create shapes and attach to body
+        shape_list = []
+        for verts in vertices_list:
+            shape = pymunk.Poly(body, verts)
             shape.color = pygame.Color(color)
             shape.filter = pymunk.ShapeFilter(mask=mask)
             shape_list.append(shape)
-        
-        cog = shape_list[0].center_of_gravity 
-        for shape in shape_list[1:]:
-            cog += shape.center_of_gravity 
-        
-        body.center_of_gravity = cog #sum([k.center_of_gravity for k in shape_list])
+
+        body.center_of_gravity = cog
         body.position = position
         body.angle = angle
         body.friction = 1
-        
+
         shape_list.append(body)
         self.space.add(*shape_list)
-        
+        #
+        # for vertices in config_dict: # per shape
+        #     scaled_vertex = [[scale * q for q in k] for k in vertices] # scale each component by scale
+        #     vertices_list.append(scaled_vertex)
+        #
+        #     area = self.polygon_area(scaled_vertex)
+        #     mass = density * area
+        #     print(mass)
+        #     mass_list.append(mass)
+        #
+        #     inertia = pymunk.moment_for_poly(mass, vertices=scaled_vertex)
+        #     inertia_list.append(inertia)
+        #
+        # # Total mass and total inertia
+        # total_mass = sum(mass_list)
+        # total_inertia = sum(inertia_list) # * 0.1  # optional rotation scaling # TODO WORK IN PROGRESS
+        #
+        # body = pymunk.Body(total_mass, total_inertia)
+        #
+        # shape_list = list()
+        # for vertex in vertices_list:
+        #     shape = pymunk.Poly(body, vertex)
+        #     shape.color = pygame.Color(color)
+        #     shape.filter = pymunk.ShapeFilter(mask=mask)
+        #     shape_list.append(shape)
+        #
+        # cog = None
+        # for shape, mass in zip(shape_list, mass_list):
+        #     if cog is None:
+        #         cog = mass * shape.center_of_gravity
+        #     else:
+        #         cog += mass * shape.center_of_gravity
+        # cog /= sum(mass_list)
+        #
+        # #
+        # # cog = shape_list[0].center_of_gravity
+        # # for shape in shape_list[1:]:
+        # #     cog += shape.center_of_gravity
+        #
+        # body.center_of_gravity = cog #sum([k.center_of_gravity for k in shape_list])
+        #
+        # body.position = position
+        # body.angle = angle
+        # body.friction = 1
+        #
+        # shape_list.append(body)
+        # self.space.add(*shape_list)
+        #
         return body 
 
     def add_tee(self, position, angle, scale=30, color='LightSlateGray', mask=pymunk.ShapeFilter.ALL_MASKS()):

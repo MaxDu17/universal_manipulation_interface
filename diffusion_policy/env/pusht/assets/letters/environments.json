@@ -1,5 +1,7 @@
 {
     "L": {"file" : "assets/letters/L.json", "scale" : 30},
     "T" : {"file" : "assets/letters/T.json", "scale" : 30},
-    "J" : {"file" : "assets/letters/J.json", "scale" : 1}
+    "J" : {"file" : "assets/letters/J.json", "scale" : 30},
+    "I" : {"file" : "assets/letters/I.json", "scale" : 30},
+    "O" : {"file" : "assets/letters/O.json", "scale" : 10}
 }
