@@ -29,6 +29,13 @@ def pymunk_to_shapely(body, shapes):
     geom = sg.MultiPolygon(geoms)
     return geom
 
+class NoBorderDrawOptions(DrawOptions):
+    def draw_polygon(self, verts, radius, outline_color, fill_color):
+        # Draw only the fill, skip outline
+        pygame.draw.polygon(self.surface, fill_color, verts)
+
+
+
 class PushGeneralEnv(gym.Env):
     metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
     reward_range = (0., 1.)
@@ -202,7 +209,8 @@ class PushGeneralEnv(gym.Env):
         canvas.fill((255, 255, 255))
         self.screen = canvas
 
-        draw_options = DrawOptions(canvas)
+        # draw_options = DrawOptions(canvas)
+        draw_options = NoBorderDrawOptions(canvas)
 
         # Draw goal pose.
         goal_body = self._get_goal_pose_body(self.goal_pose)
@@ -325,7 +333,10 @@ class PushGeneralEnv(gym.Env):
         self.n_contact_points = 0
 
         self.max_score = 50 * 100
+
         self.success_threshold = 0.95    # 95% coverage.
+        if "success_threshold" in self.current_environment:
+            self.success_threshold = self.current_environment["success_threshold"]
 
     def _add_segment(self, a, b, radius):
         shape = pymunk.Segment(self.space.static_body, a, b, radius)
@@ -420,79 +431,5 @@ class PushGeneralEnv(gym.Env):
 
         shape_list.append(body)
         self.space.add(*shape_list)
-        #
-        # for vertices in config_dict: # per shape
-        #     scaled_vertex = [[scale * q for q in k] for k in vertices] # scale each component by scale
-        #     vertices_list.append(scaled_vertex)
-        #
-        #     area = self.polygon_area(scaled_vertex)
-        #     mass = density * area
-        #     print(mass)
-        #     mass_list.append(mass)
-        #
-        #     inertia = pymunk.moment_for_poly(mass, vertices=scaled_vertex)
-        #     inertia_list.append(inertia)
-        #
-        # # Total mass and total inertia
-        # total_mass = sum(mass_list)
-        # total_inertia = sum(inertia_list) # * 0.1  # optional rotation scaling # TODO WORK IN PROGRESS
-        #
-        # body = pymunk.Body(total_mass, total_inertia)
-        #
-        # shape_list = list()
-        # for vertex in vertices_list:
-        #     shape = pymunk.Poly(body, vertex)
-        #     shape.color = pygame.Color(color)
-        #     shape.filter = pymunk.ShapeFilter(mask=mask)
-        #     shape_list.append(shape)
-        #
-        # cog = None
-        # for shape, mass in zip(shape_list, mass_list):
-        #     if cog is None:
-        #         cog = mass * shape.center_of_gravity
-        #     else:
-        #         cog += mass * shape.center_of_gravity
-        # cog /= sum(mass_list)
-        #
-        # #
-        # # cog = shape_list[0].center_of_gravity
-        # # for shape in shape_list[1:]:
-        # #     cog += shape.center_of_gravity
-        #
-        # body.center_of_gravity = cog #sum([k.center_of_gravity for k in shape_list])
-        #
-        # body.position = position
-        # body.angle = angle
-        # body.friction = 1
-        #
-        # shape_list.append(body)
-        # self.space.add(*shape_list)
-        #
-        return body 
 
-    def add_tee(self, position, angle, scale=30, color='LightSlateGray', mask=pymunk.ShapeFilter.ALL_MASKS()):
-        mass = 1
-        length = 4
-        vertices1 = [(-length*scale/2, scale),
-                                 ( length*scale/2, scale),
-                                 ( length*scale/2, 0),
-                                 (-length*scale/2, 0)]
-        inertia1 = pymunk.moment_for_poly(mass, vertices=vertices1)
-        vertices2 = [(-scale/2, scale),
-                                 (-scale/2, length*scale),
-                                 ( scale/2, length*scale),
-                                 ( scale/2, scale)]
-        inertia2 = pymunk.moment_for_poly(mass, vertices=vertices1)
-        body = pymunk.Body(mass, inertia1 + inertia2)
-        shape1 = pymunk.Poly(body, vertices1)
-        shape2 = pymunk.Poly(body, vertices2)
-        shape1.color = pygame.Color(color)
-        shape2.color = pygame.Color(color)
-        shape1.filter = pymunk.ShapeFilter(mask=mask)
-        shape2.filter = pymunk.ShapeFilter(mask=mask)
-        body.center_of_gravity = (shape1.center_of_gravity + shape2.center_of_gravity) / 2
-        body.position = position
-        body.angle = angle
-        body.friction = 1
-        self.space.add(body, shape1, shape2)
-        return body
+        return body 

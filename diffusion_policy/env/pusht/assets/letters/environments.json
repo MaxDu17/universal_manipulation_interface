@@ -3,5 +3,11 @@
     "T" : {"file" : "assets/letters/T.json", "scale" : 30},
     "J" : {"file" : "assets/letters/J.json", "scale" : 30},
     "I" : {"file" : "assets/letters/I.json", "scale" : 30},
-    "O" : {"file" : "assets/letters/O.json", "scale" : 10}
+    "O" : {"file" : "assets/letters/O.json", "scale" : 10},
+    "C" : {"file" : "assets/letters/C.json", "scale" : 20},
+    "Tri" : {"file" : "assets/letters/Tri.json", "scale" : 50},
+    "Horse" : {"file" : "assets/letters/horse.json", "scale" : 10,
+        "success_threshold" : 0.9},
+    "Octopus" : {"file" : "assets/letters/octopus.json", "scale" : 10,
+        "success_threshold" : 0.9}
 }
