@@ -1,7 +1,10 @@
 from gym import spaces
-from umi_day.common import import_umi_source
+try:
+    from umi_day.common import import_umi_source
+    from diffusion_policy.env.pusht.push_general_env import PushGeneralEnv
+except: # local running
+    from push_general_env import PushGeneralEnv
 
-from diffusion_policy.env.pusht.push_general_env import PushGeneralEnv
 import numpy as np
 import cv2
 
@@ -39,7 +42,7 @@ class PushGeneralImageEnv(PushGeneralEnv):
         })
         self.render_cache = None
     
-    def _get_obs(self):
+    def _get_obs(self, render_goal = True):
         img = super()._render_frame(mode='rgb_array')
 
         agent_pos = np.array(self.agent.position)
@@ -76,16 +79,44 @@ if __name__ == "__main__":
 
     env = PushGeneralImageEnv(environments = "assets/letters/environments.json")
     # env = PushGeneralImageEnv(environments = "assets/procedural/t_cross_envs.json")
-    letter_list = ["T", "L", "J"]
-    for letter in letter_list:
-        print(letter)
-        env.load_env(letter)
-        env._setup()
-        import ipdb 
-        ipdb.set_trace()
+    target_obj = "S"
+    env.load_env(target_obj)
+    img_list = list()
+    for i in range(100):
+        env.seed(i)
+        env.reset()
         obs = env._get_obs()
         img = np.transpose(obs["image"], (1, 2, 0))
-        plt.imsave(f"{letter}.png", img)
+        img_list.append(img.astype(np.float32)) # D, D, 3
+
+    # avg_img = np.mean(np.stack(img_list, axis = 0), axis=0)
+    # plt.imsave(f"{target_obj}.png", avg_img)
+
+    # Convert to grayscale to simplify presence detection
+    gray_imgs = [np.mean(img[10 : -10, 10 : -10], axis=2) for img in img_list]
+
+    # Threshold: 1 if pixel belongs to shape, 0 if background
+    mask_imgs = [(gray < 0.99).astype(np.float32) for gray in gray_imgs]  # adjust threshold
+
+    # Sum over all masks
+    heatmap = np.sum(mask_imgs, axis=0)  # each pixel shows how often it was occupied
+
+    # Normalize for visualization
+    heatmap /= np.max(heatmap)
+
+    plt.imsave(f"{target_obj}_heatmap.png", heatmap, cmap="hot")
+
+    #
+    # letter_list = ["T", "L", "J"]
+    # for letter in letter_list:
+    #     print(letter)
+    #     env.load_env(letter)
+    #     env._setup()
+    #     import ipdb
+    #     ipdb.set_trace()
+    #     obs = env._get_obs()
+    #     img = np.transpose(obs["image"], (1, 2, 0))
+    #     plt.imsave(f"{letter}.png", img)
 
     # for i in range(11):
     #     env.load_env(f"t_cross_{i}")

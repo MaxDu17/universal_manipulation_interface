@@ -26,6 +26,7 @@ def main(output_dir, render_size, control_hz, env_json, task):
     The episode will automatically terminate if the task is succeeded.
     Press "Q" to exit.
     Press "R" to retry.
+    Press "S" to skip (if there's a glitch)
     Hold "Space" to pause.
     """
     
@@ -74,6 +75,9 @@ def main(output_dir, render_size, control_hz, env_json, task):
                     elif event.key == pygame.K_r:
                         # press "R" to retry
                         retry=True
+                    # elif event.key == pygame.K_s:
+                    #     # press "R" to retry
+                    #     pass
                     elif event.key == pygame.K_q:
                         # press "Q" to exit
                         exit(0)
