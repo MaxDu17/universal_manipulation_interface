@@ -10,12 +10,17 @@ from pymunk.vec2d import Vec2d
 import shapely.geometry as sg
 import cv2
 import skimage.transform as st
-from diffusion_policy.env.pusht.pymunk_override import DrawOptions
+try:
+    from diffusion_policy.env.pusht.pymunk_override import DrawOptions
+except: # local running
+    from pymunk_override import DrawOptions
+
 import json 
 
 import os 
 SHAPES_DIR = os.path.join(os.path.dirname(__file__))
-
+import random
+import math
 
 def pymunk_to_shapely(body, shapes):
     geoms = list()
@@ -28,6 +33,70 @@ def pymunk_to_shapely(body, shapes):
             raise RuntimeError(f'Unsupported shape type {type(shape)}')
     geom = sg.MultiPolygon(geoms)
     return geom
+
+class NoBorderDrawOptions(DrawOptions):
+    def draw_polygon(self, verts, radius, outline_color, fill_color):
+        # Draw only the fill, skip outline
+        pygame.draw.polygon(self.surface, fill_color, verts)
+
+
+def dist(a, b):
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+def circle_from_three_points(p1, p2, p3):
+    A = p2[0] - p1[0]
+    B = p2[1] - p1[1]
+    C = p3[0] - p1[0]
+    D = p3[1] - p1[1]
+    E = A * (p1[0] + p2[0]) + B * (p1[1] + p2[1])
+    F = C * (p1[0] + p3[0]) + D * (p1[1] + p3[1])
+    G = 2 * (A * (p3[1] - p2[1]) - B * (p3[0] - p2[0]))
+
+    if G == 0:  # Collinear points
+        return None
+
+    cx = (D * E - B * F) / G
+    cy = (A * F - C * E) / G
+    r = dist((cx, cy), p1)
+    return (cx, cy, r)
+
+def circle_from_two_points(p1, p2):
+    cx = (p1[0] + p2[0]) / 2
+    cy = (p1[1] + p2[1]) / 2
+    r = dist(p1, p2) / 2
+    return (cx, cy, r)
+
+def is_in_circle(p, c):
+    return dist(p, (c[0], c[1])) <= c[2] + 1e-14
+
+def welzl(points, boundary_points):
+    if not points or len(boundary_points) == 3:
+        if len(boundary_points) == 0:
+            return (0, 0, 0)
+        elif len(boundary_points) == 1:
+            return (boundary_points[0][0], boundary_points[0][1], 0)
+        elif len(boundary_points) == 2:
+            return circle_from_two_points(boundary_points[0], boundary_points[1])
+        else:
+            return circle_from_three_points(boundary_points[0], boundary_points[1], boundary_points[2])
+
+    p = points.pop()
+    c = welzl(points, boundary_points[:])
+    if is_in_circle(p, c):
+        points.append(p)
+        return c
+
+    boundary_points.append(p)
+    result = welzl(points, boundary_points)
+    points.append(p)
+    boundary_points.pop()
+    return result
+
+def smallest_enclosing_circle(points):
+    pts = points[:]
+    random.shuffle(pts)
+    return welzl(pts, [])
+
 
 class PushGeneralEnv(gym.Env):
     metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 10}
@@ -108,9 +177,25 @@ class PushGeneralEnv(gym.Env):
             rs = np.random.RandomState(seed=seed)
             state = np.array([
                 rs.randint(50, 450), rs.randint(50, 450),
-                rs.randint(100, 400), rs.randint(100, 400),
+                rs.randint(50 + self.block_radius, 450 - self.block_radius), rs.randint(50 + self.block_radius, 450 - self.block_radius),
                 rs.randn() * 2 * np.pi - np.pi
-                ])
+            ])
+
+            # walls = [
+            #     self._add_segment((5, 506), (5, 5), 2),
+            #     self._add_segment((5, 5), (506, 5), 2),
+            #     self._add_segment((506, 5), (506, 506), 2),
+            #     self._add_segment((5, 506), (506, 506), 2)
+            # ]
+
+            # pos_agent = state[:2]
+            # pos_block = state[2:4]
+            # rot_block = state[4]
+            # state = np.array([
+            #     rs.randint(50, 450), rs.randint(50, 450),
+            #     rs.randint(100, 400), rs.randint(100, 400),
+            #     rs.randn() * 2 * np.pi - np.pi
+            #     ])
         self._set_state(state)
 
         observation = self._get_obs()
@@ -202,7 +287,8 @@ class PushGeneralEnv(gym.Env):
         canvas.fill((255, 255, 255))
         self.screen = canvas
 
-        draw_options = DrawOptions(canvas)
+        # draw_options = DrawOptions(canvas)
+        draw_options = NoBorderDrawOptions(canvas)
 
         # Draw goal pose.
         goal_body = self._get_goal_pose_body(self.goal_pose)
@@ -314,8 +400,8 @@ class PushGeneralEnv(gym.Env):
         # Add agent, block, and goal zone.
         self.agent = self.add_circle((256, 400), 15)
         # self.block = self.add_tee((256, 300), 0)
-        self.block = self.add_object(os.path.join(SHAPES_DIR, self.current_environment["file"]), (256, 300), 0, scale = self.current_environment["scale"])
-
+        self.block, bounding_radius = self.add_object(os.path.join(SHAPES_DIR, self.current_environment["file"]), (256, 300), 0, scale = self.current_environment["scale"])
+        self.block_radius = bounding_radius
         self.goal_color = pygame.Color('LightGreen')
         self.goal_pose = np.array([256,256,np.pi/4])  # x, y, theta (in radians)
 
@@ -325,7 +411,10 @@ class PushGeneralEnv(gym.Env):
         self.n_contact_points = 0
 
         self.max_score = 50 * 100
+
         self.success_threshold = 0.95    # 95% coverage.
+        if "success_threshold" in self.current_environment:
+            self.success_threshold = self.current_environment["success_threshold"]
 
     def _add_segment(self, a, b, radius):
         shape = pymunk.Segment(self.space.static_body, a, b, radius)
@@ -368,7 +457,9 @@ class PushGeneralEnv(gym.Env):
         vertices_list = []
 
         cog_accum = pymunk.Vec2d(0, 0)
-
+        flat_list_vertices = [vertex for shape in config_dict for vertex in shape]
+        cx, cy, radius = smallest_enclosing_circle(flat_list_vertices)
+        scaled_radius = scale * radius
         # First pass: scale vertices, calculate mass, store COMs
         com_list = []
         for vertices in config_dict:  # per shape
@@ -389,7 +480,6 @@ class PushGeneralEnv(gym.Env):
         # Combined center of gravity
         total_mass = sum(mass_list)
         cog = cog_accum / total_mass
-        print(mass_list)
 
         # Second pass: compute total inertia about combined COM
         total_inertia = 0
@@ -420,79 +510,5 @@ class PushGeneralEnv(gym.Env):
 
         shape_list.append(body)
         self.space.add(*shape_list)
-        #
-        # for vertices in config_dict: # per shape
-        #     scaled_vertex = [[scale * q for q in k] for k in vertices] # scale each component by scale
-        #     vertices_list.append(scaled_vertex)
-        #
-        #     area = self.polygon_area(scaled_vertex)
-        #     mass = density * area
-        #     print(mass)
-        #     mass_list.append(mass)
-        #
-        #     inertia = pymunk.moment_for_poly(mass, vertices=scaled_vertex)
-        #     inertia_list.append(inertia)
-        #
-        # # Total mass and total inertia
-        # total_mass = sum(mass_list)
-        # total_inertia = sum(inertia_list) # * 0.1  # optional rotation scaling # TODO WORK IN PROGRESS
-        #
-        # body = pymunk.Body(total_mass, total_inertia)
-        #
-        # shape_list = list()
-        # for vertex in vertices_list:
-        #     shape = pymunk.Poly(body, vertex)
-        #     shape.color = pygame.Color(color)
-        #     shape.filter = pymunk.ShapeFilter(mask=mask)
-        #     shape_list.append(shape)
-        #
-        # cog = None
-        # for shape, mass in zip(shape_list, mass_list):
-        #     if cog is None:
-        #         cog = mass * shape.center_of_gravity
-        #     else:
-        #         cog += mass * shape.center_of_gravity
-        # cog /= sum(mass_list)
-        #
-        # #
-        # # cog = shape_list[0].center_of_gravity
-        # # for shape in shape_list[1:]:
-        # #     cog += shape.center_of_gravity
-        #
-        # body.center_of_gravity = cog #sum([k.center_of_gravity for k in shape_list])
-        #
-        # body.position = position
-        # body.angle = angle
-        # body.friction = 1
-        #
-        # shape_list.append(body)
-        # self.space.add(*shape_list)
-        #
-        return body 
 
-    def add_tee(self, position, angle, scale=30, color='LightSlateGray', mask=pymunk.ShapeFilter.ALL_MASKS()):
-        mass = 1
-        length = 4
-        vertices1 = [(-length*scale/2, scale),
-                                 ( length*scale/2, scale),
-                                 ( length*scale/2, 0),
-                                 (-length*scale/2, 0)]
-        inertia1 = pymunk.moment_for_poly(mass, vertices=vertices1)
-        vertices2 = [(-scale/2, scale),
-                                 (-scale/2, length*scale),
-                                 ( scale/2, length*scale),
-                                 ( scale/2, scale)]
-        inertia2 = pymunk.moment_for_poly(mass, vertices=vertices1)
-        body = pymunk.Body(mass, inertia1 + inertia2)
-        shape1 = pymunk.Poly(body, vertices1)
-        shape2 = pymunk.Poly(body, vertices2)
-        shape1.color = pygame.Color(color)
-        shape2.color = pygame.Color(color)
-        shape1.filter = pymunk.ShapeFilter(mask=mask)
-        shape2.filter = pymunk.ShapeFilter(mask=mask)
-        body.center_of_gravity = (shape1.center_of_gravity + shape2.center_of_gravity) / 2
-        body.position = position
-        body.angle = angle
-        body.friction = 1
-        self.space.add(body, shape1, shape2)
-        return body
+        return body, scaled_radius

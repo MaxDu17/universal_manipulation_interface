@@ -4,17 +4,19 @@ from diffusion_policy.common.replay_buffer import ReplayBuffer
 from diffusion_policy.env.pusht.push_general_env import PushGeneralEnv
 import pygame
 import os 
+import imageio
 
 # TODO: make interface to collect each data 
 
 
 @click.command()
 @click.option('-o', '--output_dir', default="DATA/", type = str)
+@click.option('-o', '--video_dir', default="DATA/VIDEOS/", type = str)
 @click.option('-rs', '--render_size', default=96, type=int)
 @click.option('-hz', '--control_hz', default=10, type=int)
 @click.option('-e', '--env_json', default="assets/letters/environments.json", type=str)
 @click.option('-t', '--task', required=True, type=str)
-def main(output_dir, render_size, control_hz, env_json, task):
+def main(output_dir, video_dir, render_size, control_hz, env_json, task):
     """
     Collect demonstration for the Push-T task.
     
@@ -61,6 +63,9 @@ def main(output_dir, render_size, control_hz, env_json, task):
         done = False
         plan_idx = 0
         pygame.display.set_caption(f'plan_idx:{plan_idx}')
+
+        os.makedirs(os.path.join(video_dir, task), exist_ok = True)
+        ep_vid_writer = imageio.get_writer(os.path.join(video_dir, task, str(seed) + ".mp4"), codec='libx264')
         # step-level while loop
         while not done:
             # process keypress events
@@ -74,6 +79,9 @@ def main(output_dir, render_size, control_hz, env_json, task):
                     elif event.key == pygame.K_r:
                         # press "R" to retry
                         retry=True
+                    # elif event.key == pygame.K_s:
+                    #     # press "R" to retry
+                    #     pass
                     elif event.key == pygame.K_q:
                         # press "Q" to exit
                         exit(0)
@@ -105,6 +113,8 @@ def main(output_dir, render_size, control_hz, env_json, task):
                     'n_contacts': np.float32([info['n_contacts']])
                 }
                 episode.append(data)
+
+                ep_vid_writer.append_data(np.expand_dims(img, axis = 0))
                 
             # step env and render
             obs, reward, done, info = env.step(act)
@@ -112,6 +122,7 @@ def main(output_dir, render_size, control_hz, env_json, task):
             
             # regulate control frequency
             clock.tick(control_hz)
+        ep_vid_writer.close()
         if not retry:
             # save episode buffer to replay buffer (on disk)
             data_dict = dict()
