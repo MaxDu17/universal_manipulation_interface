@@ -13,7 +13,8 @@ class PushGeneralImageEnv(PushGeneralEnv):
             block_cog=None, 
             damping=None,
             render_size=96,
-            environments = None):
+            environments = None,
+            load_env = None): # load_env allows you to specify the current environemnt. Not needed to initialize 
         super().__init__(
             legacy=legacy, 
             block_cog=block_cog,
@@ -38,6 +39,11 @@ class PushGeneralImageEnv(PushGeneralEnv):
             )
         })
         self.render_cache = None
+
+        if load_env is not None: 
+            print("Loading task ", load_env)
+            self.load_env(load_env)
+
     
     def _get_obs(self):
         img = super()._render_frame(mode='rgb_array')
