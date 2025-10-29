@@ -1,6 +1,7 @@
 {
     "L": {"file" : "assets/letters/L.json", "scale" : 30},
     "T" : {"file" : "assets/letters/T.json", "scale" : 30},
+    "pusht_cchi_v7_replay" : {"file" : "assets/letters/T.json", "scale" : 30},
     "I" : {"file" : "assets/letters/I.json", "scale" : 30},
     "J" : {"file" : "assets/letters/J.json", "scale" : 30},
     "D" : {"file" : "assets/letters/D.json", "scale" : 15},

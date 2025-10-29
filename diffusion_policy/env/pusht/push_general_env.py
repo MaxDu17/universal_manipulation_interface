@@ -69,6 +69,7 @@ def circle_from_two_points(p1, p2):
 def is_in_circle(p, c):
     return dist(p, (c[0], c[1])) <= c[2] + 1e-14
 
+# THIS ALGORITHM Has some weird boundary case 
 def welzl(points, boundary_points):
     if not points or len(boundary_points) == 3:
         if len(boundary_points) == 0:
@@ -87,7 +88,7 @@ def welzl(points, boundary_points):
         return c
 
     boundary_points.append(p)
-    result = welzl(points, boundary_points)
+    result = welzl(points, boundary_points) 
     points.append(p)
     boundary_points.pop()
     return result
@@ -164,6 +165,13 @@ class PushGeneralEnv(gym.Env):
         self.current_environment = self.environments[name]
 
     def reset(self):
+        for i in range(100): 
+            try:
+                return self._reset()
+            except:
+                print("RETRYING RESET")
+
+    def _reset(self):
         seed = self._seed
         self._setup()
         if self.block_cog is not None:
@@ -178,6 +186,7 @@ class PushGeneralEnv(gym.Env):
             state = np.array([
                 rs.randint(50, 450), rs.randint(50, 450),
                 rs.randint(50 + self.block_radius, 450 - self.block_radius), rs.randint(50 + self.block_radius, 450 - self.block_radius),
+                # rs.randint(70 + self.block_radius, 440 - self.block_radius), rs.randint(70 + self.block_radius, 440 - self.block_radius),
                 rs.randn() * 2 * np.pi - np.pi
             ])
 

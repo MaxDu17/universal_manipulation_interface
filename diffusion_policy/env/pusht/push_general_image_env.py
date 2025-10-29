@@ -44,7 +44,7 @@ class PushGeneralImageEnv(PushGeneralEnv):
         self.render_cache = None
 
         if load_env is not None: 
-            print("Loading task ", load_env)
+            print("Loading task environment ", load_env)
             self.load_env(load_env)
 
     
@@ -111,22 +111,3 @@ if __name__ == "__main__":
     heatmap /= np.max(heatmap)
 
     plt.imsave(f"{target_obj}_heatmap.png", heatmap, cmap="hot")
-
-    #
-    # letter_list = ["T", "L", "J"]
-    # for letter in letter_list:
-    #     print(letter)
-    #     env.load_env(letter)
-    #     env._setup()
-    #     import ipdb
-    #     ipdb.set_trace()
-    #     obs = env._get_obs()
-    #     img = np.transpose(obs["image"], (1, 2, 0))
-    #     plt.imsave(f"{letter}.png", img)
-
-    # for i in range(11):
-    #     env.load_env(f"t_cross_{i}")
-    #     env._setup()
-    #     obs = env._get_obs()
-    #     img = np.transpose(obs["image"], (1, 2, 0))
-    #     plt.imsave(f"t_cross_{i}.png", img)

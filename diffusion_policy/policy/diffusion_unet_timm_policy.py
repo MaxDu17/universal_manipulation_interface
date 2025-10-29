@@ -162,11 +162,60 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
         }
         return result
 
+    
     # ========= training  ============
     def set_normalizer(self, normalizer: LinearNormalizer):
         self.normalizer.load_state_dict(normalizer.state_dict())
 
-    def compute_loss(self, batch):
+    def compute_obs_representations(self, batch):
+        # this function will return a list of intermediate representation
+        assert 'valid_mask' not in batch
+        nobs = self.normalizer.normalize(batch['obs'])
+        nactions = self.normalizer['action'].normalize(batch['action'])
+        
+        assert self.obs_as_global_cond
+        
+        global_cond = self.obs_encoder(nobs)
+        return global_cond 
+    
+    
+
+    # def compute_intermediate_obs(self, batch):
+    #     # TODO: NOT DONE 
+    #     def my_forward_hook(module, input, output):
+    #         print(f"Hook triggered for module: {module.__class__.__name__}")
+    #         print(f"Input shape: {input[0].shape}") # input is a tuple of args
+    #         print(f"Output shape: {output.shape}")
+
+    #     for block in self.obs_encoder.key_model_map.image.blocks:
+    #         block.register_forward_hook(my_forward_hook)
+
+    #     assert 'valid_mask' not in batch
+    #     nobs = self.normalizer.normalize(batch['obs'])
+    #     nactions = self.normalizer['action'].normalize(batch['action'])
+        
+    #     assert self.obs_as_global_cond
+    #     global_cond = self.obs_encoder(nobs)
+    #     return global_cond 
+
+# VisionTransformer(
+#   (patch_embed): PatchEmbed(
+#     (proj): Conv2d(3, 768, kernel_size=(16, 16), stride=(16, 16), bias=False)
+#     (norm): Identity()
+#   )
+#   (pos_drop): Dropout(p=0.0, inplace=False)
+#   (patch_drop): Identity()
+#   (norm_pre): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+#   (blocks): Sequential(
+#     (0): Block(
+
+
+        pass # use forward hook
+
+    
+
+
+    def compute_loss(self, batch, return_intermediates = False,  parallel_intermediates = None, reduce_loss = True):
         # normalize input
         assert 'valid_mask' not in batch
         nobs = self.normalizer.normalize(batch['obs'])
@@ -187,16 +236,24 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
 
         trajectory = nactions
         # Sample noise that we'll add to the images
-        noise = torch.randn(trajectory.shape, device=trajectory.device)
-        # input perturbation by adding additonal noise to alleviate exposure bias
-        # reference: https://github.com/forever208/DDPM-IP
-        noise_new = noise + self.input_pertub * torch.randn(trajectory.shape, device=trajectory.device)
 
-        # Sample a random timestep for each image
-        timesteps = torch.randint(
-            0, self.noise_scheduler.config.num_train_timesteps, 
-            (nactions.shape[0],), device=trajectory.device
-        ).long()
+        if parallel_intermediates is None: 
+            noise = torch.randn(trajectory.shape, device=trajectory.device)
+            # input perturbation by adding additonal noise to alleviate exposure bias
+            # reference: https://github.com/forever208/DDPM-IP
+            noise_new = noise + self.input_pertub * torch.randn(trajectory.shape, device=trajectory.device)
+
+            # Sample a random timestep for each image
+            timesteps = torch.randint(
+                0, self.noise_scheduler.config.num_train_timesteps, 
+                (nactions.shape[0],), device=trajectory.device
+            ).long()
+        else:
+            # this will link the u-net training of another u-net forward pass
+            # critical that we link them or else the noise will create a lot of variance in the training 
+            noise_new = parallel_intermediates["noise_new"]
+            noise = parallel_intermediates["noise"]
+            timesteps = parallel_intermediates["step"]
 
         # Add noise to the clean images according to the noise magnitude at each timestep
         # (this is the forward diffusion process)
@@ -208,8 +265,11 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
             noisy_trajectory,
             timesteps, 
             local_cond=None,
-            global_cond=global_cond
+            global_cond=global_cond,
+            return_intermediates = return_intermediates
         )
+        if return_intermediates:
+            pred, representations = pred # unpack additional value 
 
         pred_type = self.noise_scheduler.config.prediction_type 
         if pred_type == 'epsilon':
@@ -222,9 +282,19 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
         loss = F.mse_loss(pred, target, reduction='none')
         loss = loss.type(loss.dtype)
         loss = reduce(loss, 'b ... -> b (...)', 'mean')
-        loss = loss.mean()
+        if reduce_loss:
+            loss = loss.mean()
 
+        if return_intermediates:
+            intermediates = {"u_net_representations" : representations, "global_cond": global_cond, "noise_new" : noise_new, "noise" : noise, "step" : timesteps, "pred" : pred}
+            return loss, intermediates # allows for additional calculations on the intermediate representations 
+            
         return loss
 
-    def forward(self, batch):
-        return self.compute_loss(batch)
+
+
+    def forward(self, batch, return_intermediates = False, parallel_intermediates = None, reduce_loss = True):
+        # return intermediates: return intermediate representations (might be customized later)
+        # noise: supplied noise seed for parallel runs (needed for u-net regularization)
+        # reduce_loss: either return a mean loss or return a vector of losses, useful for parsing losses 
+        return self.compute_loss(batch, return_intermediates = return_intermediates,  parallel_intermediates =  parallel_intermediates, reduce_loss = reduce_loss)

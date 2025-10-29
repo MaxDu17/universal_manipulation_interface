@@ -41,7 +41,7 @@ class JsonLogger:
     def __init__(self, path: str, 
             filter_fn: Optional[Callable[[str,Any],bool]]=None):
         if filter_fn is None:
-            filter_fn = lambda k,v: isinstance(v, numbers.Number)
+            filter_fn = lambda k,v: isinstance(v, (numbers.Number, str))
 
         # default to append mode
         self.path = path
@@ -112,6 +112,7 @@ class JsonLogger:
         # ensure one line per json
         buf = buf.replace('\n','') + '\n'
         self.file.write(buf)
+        self.file.flush()
     
     def get_last_log(self):
         return copy.deepcopy(self.last_log)

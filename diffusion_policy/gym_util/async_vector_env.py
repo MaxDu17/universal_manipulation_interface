@@ -396,9 +396,14 @@ class AsyncVectorEnv(VectorEnv):
             logger.error("Shutting down Worker-{0}.".format(index))
             self.parent_pipes[index].close()
             self.parent_pipes[index] = None
+            print(index, exctype, value)
 
         logger.error("Raising the last exception back to the main process.")
         raise exctype(value)
+
+        # if value is not None: 
+        #     raise exctype(value)
+        # raise Exception("Generic error!")
     
     def call_async(self, name: str, *args, **kwargs):
         """Calls the method with name asynchronously and apply args and kwargs to the method.
@@ -617,55 +622,117 @@ def _worker_shared_memory(index, env_fn, pipe, parent_pipe, shared_memory, error
     env = env_fn()
     observation_space = env.observation_space
     parent_pipe.close()
-    try:
-        while True:
-            command, data = pipe.recv()
-            if command == "reset":
-                observation = env.reset()
-                write_to_shared_memory(
-                    index, observation, shared_memory, observation_space
+    # try:
+    while True:
+        command, data = pipe.recv()
+        if command == "reset":
+            observation = env.reset()
+           
+            write_to_shared_memory(
+                index, observation, shared_memory, observation_space
+            )
+            pipe.send((None, True))
+        elif command == "step":
+            observation, reward, done, info = env.step(data)
+            # if done:
+            #     observation = env.reset()
+            write_to_shared_memory(
+                index, observation, shared_memory, observation_space
+            )
+            pipe.send(((None, reward, done, info), True))
+        elif command == "seed":
+            env.seed(data)
+            pipe.send((None, True))
+        elif command == "close":
+            pipe.send((None, True))
+            break
+        elif command == "_call":
+            name, args, kwargs = data
+            if name in ["reset", "step", "seed", "close"]:
+                raise ValueError(
+                    f"Trying to call function `{name}` with "
+                    f"`_call`. Use `{name}` directly instead."
                 )
-                pipe.send((None, True))
-            elif command == "step":
-                observation, reward, done, info = env.step(data)
-                # if done:
-                #     observation = env.reset()
-                write_to_shared_memory(
-                    index, observation, shared_memory, observation_space
-                )
-                pipe.send(((None, reward, done, info), True))
-            elif command == "seed":
-                env.seed(data)
-                pipe.send((None, True))
-            elif command == "close":
-                pipe.send((None, True))
-                break
-            elif command == "_call":
-                name, args, kwargs = data
-                if name in ["reset", "step", "seed", "close"]:
-                    raise ValueError(
-                        f"Trying to call function `{name}` with "
-                        f"`_call`. Use `{name}` directly instead."
-                    )
-                function = getattr(env, name)
-                if callable(function):
-                    pipe.send((function(*args, **kwargs), True))
-                else:
-                    pipe.send((function, True))
-            elif command == "_setattr":
-                name, value = data
-                setattr(env, name, value)
-                pipe.send((None, True))
-            elif command == "_check_observation_space":
-                pipe.send((data == observation_space, True))
+            function = getattr(env, name)
+            if callable(function):
+                pipe.send((function(*args, **kwargs), True))
             else:
-                raise RuntimeError(
-                    "Received unknown command `{0}`. Must "
-                    "be one of {`reset`, `step`, `seed`, `close`, "
-                    "`_check_observation_space`}.".format(command)
-                )
-    except (KeyboardInterrupt, Exception):
-        error_queue.put((index,) + sys.exc_info()[:2])
-        pipe.send((None, False))
-    finally:
-        env.close()
+                pipe.send((function, True))
+        elif command == "_setattr":
+            name, value = data
+            setattr(env, name, value)
+            pipe.send((None, True))
+        elif command == "_check_observation_space":
+            pipe.send((data == observation_space, True))
+        else:
+            raise RuntimeError(
+                "Received unknown command `{0}`. Must "
+                "be one of {`reset`, `step`, `seed`, `close`, "
+                "`_check_observation_space`}.".format(command)
+            )
+    # except (KeyboardInterrupt, Exception):
+    #     print("IVE ERRORED OUT!!!")
+    #     error_queue.put((index,) + sys.exc_info()[:2])
+    #     pipe.send((None, False))
+    # finally:
+    #     env.close()
+
+# original worker function 
+# def _worker_shared_memory(index, env_fn, pipe, parent_pipe, shared_memory, error_queue):
+#     assert shared_memory is not None
+#     env = env_fn()
+#     observation_space = env.observation_space
+#     parent_pipe.close()
+#     try:
+#         while True:
+#             command, data = pipe.recv()
+#             if command == "reset":
+#                 observation = env.reset()
+#                 write_to_shared_memory(
+#                     index, observation, shared_memory, observation_space
+#                 )
+#                 pipe.send((None, True))
+#             elif command == "step":
+#                 observation, reward, done, info = env.step(data)
+#                 # if done:
+#                 #     observation = env.reset()
+#                 write_to_shared_memory(
+#                     index, observation, shared_memory, observation_space
+#                 )
+#                 pipe.send(((None, reward, done, info), True))
+#             elif command == "seed":
+#                 env.seed(data)
+#                 pipe.send((None, True))
+#             elif command == "close":
+#                 pipe.send((None, True))
+#                 break
+#             elif command == "_call":
+#                 name, args, kwargs = data
+#                 if name in ["reset", "step", "seed", "close"]:
+#                     raise ValueError(
+#                         f"Trying to call function `{name}` with "
+#                         f"`_call`. Use `{name}` directly instead."
+#                     )
+#                 function = getattr(env, name)
+#                 if callable(function):
+#                     pipe.send((function(*args, **kwargs), True))
+#                 else:
+#                     pipe.send((function, True))
+#             elif command == "_setattr":
+#                 name, value = data
+#                 setattr(env, name, value)
+#                 pipe.send((None, True))
+#             elif command == "_check_observation_space":
+#                 pipe.send((data == observation_space, True))
+#             else:
+#                 raise RuntimeError(
+#                     "Received unknown command `{0}`. Must "
+#                     "be one of {`reset`, `step`, `seed`, `close`, "
+#                     "`_check_observation_space`}.".format(command)
+#                 )
+#     except (KeyboardInterrupt, Exception):
+#         print("IVE ERRORED OUT!!!")
+#         error_queue.put((index,) + sys.exc_info()[:2])
+#         pipe.send((None, False))
+#     finally:
+#         env.close()

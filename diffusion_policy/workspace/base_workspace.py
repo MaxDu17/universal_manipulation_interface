@@ -42,16 +42,14 @@ class BaseWorkspace:
             path = pathlib.Path(path)
         if exclude_keys is None:
             exclude_keys = tuple(self.exclude_keys)
-        if include_keys is None:
+        if include_keys is None: # don't save output dir 
             include_keys = tuple(self.include_keys) + ('_output_dir',)
-
         path.parent.mkdir(parents=False, exist_ok=True)
         payload = {
             'cfg': self.cfg,
             'state_dicts': dict(),
             'pickles': dict()
         } 
-
         for key, value in self.__dict__.items():
             if hasattr(value, 'state_dict') and hasattr(value, 'load_state_dict'):
                 # modules, optimizers and samplers etc
@@ -60,13 +58,14 @@ class BaseWorkspace:
                         payload['state_dicts'][key] = _copy_to_cpu(value.state_dict())
                     else:
                         payload['state_dicts'][key] = value.state_dict()
-            elif key in include_keys:
+            elif key in include_keys:                
                 payload['pickles'][key] = dill.dumps(value)
         if use_thread:
             self._saving_thread = threading.Thread(
                 target=lambda : torch.save(payload, path.open('wb'), pickle_module=dill))
             self._saving_thread.start()
         else:
+            print(f"Saving {payload.keys()}")
             torch.save(payload, path.open('wb'), pickle_module=dill)
         return str(path.absolute())
     
@@ -78,12 +77,13 @@ class BaseWorkspace:
             exclude_keys = tuple()
         if include_keys is None:
             include_keys = payload['pickles'].keys()
-
         for key, value in payload['state_dicts'].items():
             if key not in exclude_keys:
+                print(f"Loading {key}")
                 self.__dict__[key].load_state_dict(value, **kwargs)
         for key in include_keys:
-            if key in payload['pickles']:
+            if key in payload['pickles'] and key not in exclude_keys:
+                print(f"Loading {key}")
                 self.__dict__[key] = dill.loads(payload['pickles'][key])
     
     def load_checkpoint(self, path=None, tag='latest',
