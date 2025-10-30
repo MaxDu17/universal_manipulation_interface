@@ -109,7 +109,8 @@ class PushGeneralEnv(gym.Env):
             render_action=True,
             render_size=96,
             reset_to_state=None,
-            environments=None
+            environments=None,
+            use_old = False
         ):
         self._seed = None
         self.seed()
@@ -122,7 +123,8 @@ class PushGeneralEnv(gym.Env):
         # legcay set_state for data compatibility
         self.legacy = legacy
         self.environments = json.load(open(os.path.join(SHAPES_DIR, environments), "r"))
-        self.current_environment = None 
+        self.current_environment = None
+        self.use_old = use_old
 
         # agent_pos, block_pos, block_angle
         self.observation_space = spaces.Box(
@@ -183,12 +185,32 @@ class PushGeneralEnv(gym.Env):
         state = self.reset_to_state
         if state is None:
             rs = np.random.RandomState(seed=seed)
-            state = np.array([
-                rs.randint(50, 450), rs.randint(50, 450),
-                rs.randint(50 + self.block_radius, 450 - self.block_radius), rs.randint(50 + self.block_radius, 450 - self.block_radius),
-                # rs.randint(70 + self.block_radius, 440 - self.block_radius), rs.randint(70 + self.block_radius, 440 - self.block_radius),
-                rs.randn() * 2 * np.pi - np.pi
-            ])
+
+            if self.use_old:
+                buffer_adjustment = 0
+
+                state = np.array([
+                    rs.randint(50, 450), rs.randint(50, 450),
+                    rs.randint(50 + buffer_adjustment + self.block_radius, 450 - buffer_adjustment - self.block_radius), rs.randint(50 + buffer_adjustment + self.block_radius, 450 - buffer_adjustment - self.block_radius),
+                    # rs.randint(70 + self.block_radius, 440 - self.block_radius), rs.randint(70 + self.block_radius, 440 - self.block_radius),
+                    rs.randn() * 2 * np.pi - np.pi
+                ])
+            else:
+                # this new sampling technique makes sure the cursor starts an appropiate distance away from the object
+                buffer_adjustment = 40
+                block_location = np.array([rs.randint(50 + buffer_adjustment + self.block_radius, 450 - buffer_adjustment - self.block_radius), rs.randint(50 + buffer_adjustment + self.block_radius, 450 - buffer_adjustment - self.block_radius)])
+                for i in range(20): # maximum 20 tries
+                    cursor_location = np.array([rs.randint(50, 450), rs.randint(50, 450)])
+                    if np.linalg.norm(block_location - cursor_location) > 1.5 * self.block_radius:
+                        break
+                    if i > 18:
+                        print("DIDNT SATISFY CURSOR SAMPLING CRITERIA")
+
+                state = np.array([
+                    cursor_location[0], cursor_location[1],
+                    block_location[0], block_location[1],
+                    rs.randn() * 2 * np.pi - np.pi
+                ])
 
             # walls = [
             #     self._add_segment((5, 506), (5, 5), 2),
@@ -355,6 +377,7 @@ class PushGeneralEnv(gym.Env):
         pos_block = state[2:4]
         rot_block = state[4]
         self.agent.position = pos_agent
+
         # setting angle rotates with respect to center of mass
         # therefore will modify the geometric position
         # if not the same as CoM
@@ -411,6 +434,7 @@ class PushGeneralEnv(gym.Env):
         # self.block = self.add_tee((256, 300), 0)
         self.block, bounding_radius = self.add_object(os.path.join(SHAPES_DIR, self.current_environment["file"]), (256, 300), 0, scale = self.current_environment["scale"])
         self.block_radius = bounding_radius
+        # self.indicator_circle = self.add_circle((256, 300), bounding_radius)
         self.goal_color = pygame.Color('LightGreen')
         self.goal_pose = np.array([256,256,np.pi/4])  # x, y, theta (in radians)
 
