@@ -1,9 +1,11 @@
 {
     "L": {"file" : "assets/letters/L.json", "scale" : 30},
     "T" : {"file" : "assets/letters/T.json", "scale" : 30},
+    "F" : {"file" : "assets/letters/F.json", "scale" : 25},
     "pusht_cchi_v7_replay" : {"file" : "assets/letters/T.json", "scale" : 30},
     "I" : {"file" : "assets/letters/I.json", "scale" : 30},
     "J" : {"file" : "assets/letters/J.json", "scale" : 30},
+    "N" : {"file" : "assets/letters/N.json", "scale" : 20},
     "D" : {"file" : "assets/letters/D.json", "scale" : 15},
     "O" : {"file" : "assets/letters/O.json", "scale" : 10},
     "C" : {"file" : "assets/letters/C.json", "scale" : 20},
