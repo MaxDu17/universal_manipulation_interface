@@ -45,16 +45,17 @@ class PushGeneralImageEnv(PushGeneralEnv):
             )
         })
         self.render_cache = None
-
-        if load_env is not None: 
-            print("Loading task environment ", load_env)
+        if load_env is not None: # you can choose to load upon initialization or later 
             self.load_env(load_env)
 
     
     def _get_obs(self, render_goal = True):
         img = super()._render_frame(mode='rgb_array')
-
         agent_pos = np.array(self.agent.position)
+        if self.flipflag:
+            img = np.flip(img, axis=1) #H, W, 3 
+            assert len(img.shape) == 3
+            agent_pos[:, 0] = 511 - agent_pos[:, 0] 
         img_obs = np.moveaxis(img.astype(np.float32) / 255, -1, 0)
         obs = {
             'image': img_obs,
@@ -151,8 +152,11 @@ if __name__ == "__main__":
 
     env = PushGeneralImageEnv(environments = "assets/letters/environments.json", use_old = False)
     # env = PushGeneralImageEnv(environments = "assets/procedural/t_cross_envs.json")
-    target_obj = "O"
-    env.load_env(target_obj)
+    target_obj = "O_hflipped"
+    env.load_env(target_obj) # this does not comply with the setup 
+    env.reset()
+    obs = env._get_obs()
+    env.step(np.array([256, 256]))
 
 
     check_within_bounds(env, iterations = 1000)

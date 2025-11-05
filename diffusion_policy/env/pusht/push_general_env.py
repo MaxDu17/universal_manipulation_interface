@@ -146,6 +146,7 @@ class PushGeneralEnv(gym.Env):
         self.damping = damping
         self.render_action = render_action
 
+        self.flipflag = False 
         """
         If human-rendering is used, `self.window` will be a reference
         to the window that we draw to. `self.clock` will be a clock that is used
@@ -164,7 +165,14 @@ class PushGeneralEnv(gym.Env):
         self.reset_to_state = reset_to_state
     
     def load_env(self, name):
-        self.current_environment = self.environments[name]
+        print("[Push_General_Env] Loading task environment ", name)
+        if "hflipped" in name:
+            print("[Push_General_Env] Setting environment to be flipped!")
+            self.flipflag = True # this is from the parent class 
+            letter = name.split("_hflipped")[0]
+            self.current_environment = self.environments[letter]
+        else: 
+            self.current_environment = self.environments[name]
 
     def reset(self):
         for i in range(100): 
@@ -233,6 +241,9 @@ class PushGeneralEnv(gym.Env):
         return observation
 
     def step(self, action):
+        if self.flipflag:
+            # HACK: MAGIC NUMBER 
+            action[:, 0] = 511 - action[:, 0]
         dt = 1.0 / self.sim_hz
         self.n_contact_points = 0
         n_steps = self.sim_hz // self.control_hz
