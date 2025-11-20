@@ -53,9 +53,9 @@ class PushGeneralImageEnv(PushGeneralEnv):
         img = super()._render_frame(mode='rgb_array')
         agent_pos = np.array(self.agent.position)
         if self.flipflag:
-            img = np.flip(img, axis=1) #H, W, 3 
+            img = cv2.flip(img, 1)
             assert len(img.shape) == 3
-            agent_pos[:, 0] = 511 - agent_pos[:, 0] 
+            agent_pos[0] = 511 - agent_pos[0] 
         img_obs = np.moveaxis(img.astype(np.float32) / 255, -1, 0)
         obs = {
             'image': img_obs,
@@ -64,7 +64,10 @@ class PushGeneralImageEnv(PushGeneralEnv):
 
         # draw action
         if self.latest_action is not None:
-            action = np.array(self.latest_action)
+            if self.flipflag: # gotta flip it back into the inverted space 
+                action = 511 - np.array(self.latest_action)
+            else:
+                action = np.array(self.latest_action)
             coord = (action / 512 * 96).astype(np.int32)
             marker_size = int(8/96*self.render_size)
             thickness = int(1/96*self.render_size)

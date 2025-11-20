@@ -117,7 +117,79 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
         trajectory[condition_mask] = condition_data[condition_mask]        
 
         return trajectory
+    
+    def add_remove_noise(self, batch, noise_level):
+        # this function is an implementation of checking if something is in or out of distribution
+        # it adds the specified noise to the batch, then denoises it again and returns the denoised actions 
+        assert 'valid_mask' not in batch
+        nobs = self.normalizer.normalize(batch['obs'])
+        nactions = self.normalizer['action'].normalize(batch['action'])
+        
+        assert self.obs_as_global_cond
+        global_cond = self.obs_encoder(nobs)
 
+        # TODO: repeat samples by tiling 
+        # HACK : features missing
+        #   1) local conditioning 
+
+        # should return action similarity across X diffusion steps 
+        # for now, hard code at []
+
+        # # train on multiple diffusion samples per obs
+        # if self.train_diffusion_n_samples != 1:
+        #     # repeat obs features and actions multiple times along the batch dimension
+        #     # each sample will later have a different noise sample, effecty training 
+        #     # more diffusion steps per each obs encoder forward pass
+        #     global_cond = torch.repeat_interleave(global_cond, 
+        #         repeats=self.train_diffusion_n_samples, dim=0)
+        #     nactions = torch.repeat_interleave(nactions, 
+        #         repeats=self.train_diffusion_n_samples, dim=0)
+
+        trajectory = nactions
+        # Sample noise that we'll add to the images
+
+        noise = torch.randn(trajectory.shape, device=trajectory.device)
+        # # input perturbation by adding additonal noise to alleviate exposure bias
+        # # reference: https://github.com/forever208/DDPM-IP
+        # noise_new = noise + self.input_pertub * torch.randn(trajectory.shape, device=trajectory.device)
+
+        # Sample a random timestep for each image
+        assert 0 <= noise_level < self.noise_scheduler.config.num_train_timesteps
+        timesteps = noise_level * torch.ones((nactions.shape[0],), dtype = torch.long, device = trajectory.device)
+        # timesteps = torch.randint(
+        #     0, self.noise_scheduler.config.num_train_timesteps, 
+        #     (nactions.shape[0],), device=trajectory.device
+        # ).long()
+
+        # Add noise to the clean images according to the noise magnitude at each timestep
+        # (this is the forward diffusion process)
+        noisy_trajectory = self.noise_scheduler.add_noise(
+            trajectory, noise, timesteps)
+
+        
+        # now, time to denoise! 
+
+        scheduler = self.noise_scheduler
+    
+        # set step values
+        scheduler.set_timesteps(self.num_inference_steps)
+        start_index = (scheduler.timesteps >= noise_level).nonzero()[-1][0]
+
+        for t in scheduler.timesteps[start_index:]: # this goes from high to low 
+            # 1. apply conditioning
+
+            # 2. predict model output
+            model_output = self.model(noisy_trajectory, t, 
+                local_cond=None, global_cond=global_cond)
+
+            # 3. compute previous image: x_t -> x_t-1
+            noisy_trajectory = scheduler.step(
+                model_output, t, noisy_trajectory, 
+                generator=None,
+                **self.kwargs
+                ).prev_sample
+        
+        return noisy_trajectory 
 
     def predict_action(self, obs_dict: Dict[str, torch.Tensor], fixed_action_prefix: torch.Tensor=None) -> Dict[str, torch.Tensor]:
         """
@@ -178,42 +250,6 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
         global_cond = self.obs_encoder(nobs)
         return global_cond 
     
-    
-
-    # def compute_intermediate_obs(self, batch):
-    #     # TODO: NOT DONE 
-    #     def my_forward_hook(module, input, output):
-    #         print(f"Hook triggered for module: {module.__class__.__name__}")
-    #         print(f"Input shape: {input[0].shape}") # input is a tuple of args
-    #         print(f"Output shape: {output.shape}")
-
-    #     for block in self.obs_encoder.key_model_map.image.blocks:
-    #         block.register_forward_hook(my_forward_hook)
-
-    #     assert 'valid_mask' not in batch
-    #     nobs = self.normalizer.normalize(batch['obs'])
-    #     nactions = self.normalizer['action'].normalize(batch['action'])
-        
-    #     assert self.obs_as_global_cond
-    #     global_cond = self.obs_encoder(nobs)
-    #     return global_cond 
-
-# VisionTransformer(
-#   (patch_embed): PatchEmbed(
-#     (proj): Conv2d(3, 768, kernel_size=(16, 16), stride=(16, 16), bias=False)
-#     (norm): Identity()
-#   )
-#   (pos_drop): Dropout(p=0.0, inplace=False)
-#   (patch_drop): Identity()
-#   (norm_pre): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
-#   (blocks): Sequential(
-#     (0): Block(
-
-
-        pass # use forward hook
-
-    
-
 
     def compute_loss(self, batch, return_intermediates = False,  parallel_intermediates = None, reduce_loss = True):
         # normalize input

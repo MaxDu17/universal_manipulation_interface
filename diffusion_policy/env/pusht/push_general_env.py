@@ -243,7 +243,8 @@ class PushGeneralEnv(gym.Env):
     def step(self, action):
         if self.flipflag:
             # HACK: MAGIC NUMBER 
-            action[:, 0] = 511 - action[:, 0]
+            action[0] = 511 - action[0]
+
         dt = 1.0 / self.sim_hz
         self.n_contact_points = 0
         n_steps = self.sim_hz // self.control_hz
