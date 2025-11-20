@@ -146,7 +146,8 @@ class PushGeneralEnv(gym.Env):
         self.damping = damping
         self.render_action = render_action
 
-        self.flipflag = False 
+        self.flipflag = False
+        self.altgoal = False
         """
         If human-rendering is used, `self.window` will be a reference
         to the window that we draw to. `self.clock` will be a clock that is used
@@ -170,6 +171,11 @@ class PushGeneralEnv(gym.Env):
             print("[Push_General_Env] Setting environment to be flipped!")
             self.flipflag = True # this is from the parent class 
             letter = name.split("_hflipped")[0]
+            self.current_environment = self.environments[letter]
+        elif "altgoal" in name:
+            print("[Push_General_Env] Setting alternate environment goal")
+            self.altgoal = True
+            letter = name.split("_altgoal")[0]
             self.current_environment = self.environments[letter]
         else: 
             self.current_environment = self.environments[name]
@@ -448,6 +454,7 @@ class PushGeneralEnv(gym.Env):
         # self.indicator_circle = self.add_circle((256, 300), bounding_radius)
         self.goal_color = pygame.Color('LightGreen')
         self.goal_pose = np.array([256,256,np.pi/4])  # x, y, theta (in radians)
+        self.alt_goal_pose = np.array([100, 100,0])  # x, y, theta (in radians)
 
         # Add collision handling
         self.collision_handeler = self.space.add_collision_handler(0, 0)
