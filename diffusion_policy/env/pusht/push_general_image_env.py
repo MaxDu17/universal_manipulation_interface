@@ -155,11 +155,13 @@ if __name__ == "__main__":
 
     env = PushGeneralImageEnv(environments = "assets/letters/environments.json", use_old = False)
     # env = PushGeneralImageEnv(environments = "assets/procedural/t_cross_envs.json")
-    target_obj = "O_hflipped"
+    target_obj = "T_altgoal"
     env.load_env(target_obj) # this does not comply with the setup 
     env.reset()
     obs = env._get_obs()
-    env.step(np.array([256, 256]))
+    img = np.transpose(obs["image"], (1, 2, 0))
+    plt.imsave("test.png", img)
+    # env.step(np.array([256, 256]))
 
 
-    check_within_bounds(env, iterations = 1000)
+    # check_within_bounds(env, iterations = 1000)

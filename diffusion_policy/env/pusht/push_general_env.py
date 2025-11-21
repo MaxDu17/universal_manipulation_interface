@@ -214,7 +214,10 @@ class PushGeneralEnv(gym.Env):
                 buffer_adjustment = 40
                 block_location = np.array([rs.randint(50 + buffer_adjustment + self.block_radius, 450 - buffer_adjustment - self.block_radius), rs.randint(50 + buffer_adjustment + self.block_radius, 450 - buffer_adjustment - self.block_radius)])
                 for i in range(20): # maximum 20 tries
-                    cursor_location = np.array([rs.randint(50, 450), rs.randint(50, 450)])
+                    if self.altgoal:
+                        cursor_location = np.array([rs.randint(190, 310), rs.randint(190, 310)])
+                    else:
+                        cursor_location = np.array([rs.randint(50, 450), rs.randint(50, 450)])
                     if np.linalg.norm(block_location - cursor_location) > 1.5 * self.block_radius:
                         break
                     if i > 18:
@@ -266,7 +269,10 @@ class PushGeneralEnv(gym.Env):
                 self.space.step(dt)
 
         # compute reward
-        goal_body = self._get_goal_pose_body(self.goal_pose)
+        if self.altgoal:
+            goal_body = self._get_goal_pose_body(self.alt_goal_pose)
+        else:
+            goal_body = self._get_goal_pose_body(self.goal_pose)
         goal_geom = pymunk_to_shapely(goal_body, self.block.shapes)
         block_geom = pymunk_to_shapely(self.block, self.block.shapes)
 
@@ -341,10 +347,18 @@ class PushGeneralEnv(gym.Env):
 
         # Draw goal pose.
         goal_body = self._get_goal_pose_body(self.goal_pose)
-        for shape in self.block.shapes:
+        for shape in self.block.shapes: # this draws the polygons just like how we did with the original object
             goal_points = [pymunk.pygame_util.to_pygame(goal_body.local_to_world(v), draw_options.surface) for v in shape.get_vertices()]
             goal_points += [goal_points[0]]
             pygame.draw.polygon(canvas, self.goal_color, goal_points)
+
+        if self.altgoal:
+            goal_body = self._get_goal_pose_body(self.alt_goal_pose)
+            for shape in self.block.shapes:  # this draws the polygons just like how we did with the original object
+                goal_points = [pymunk.pygame_util.to_pygame(goal_body.local_to_world(v), draw_options.surface) for v in
+                               shape.get_vertices()]
+                goal_points += [goal_points[0]]
+                pygame.draw.polygon(canvas, self.alt_goal_color, goal_points)
 
         # Draw agent and block.
         self.space.debug_draw(draw_options)
@@ -454,8 +468,9 @@ class PushGeneralEnv(gym.Env):
         self.block_radius = bounding_radius
         # self.indicator_circle = self.add_circle((256, 300), bounding_radius)
         self.goal_color = pygame.Color('LightGreen')
+        self.alt_goal_color = pygame.Color('LightBlue')
         self.goal_pose = np.array([256,256,np.pi/4])  # x, y, theta (in radians)
-        self.alt_goal_pose = np.array([100, 100,0])  # x, y, theta (in radians)
+        self.alt_goal_pose = np.array([75, 75,0])  # x, y, theta (in radians)
 
         # Add collision handling
         self.collision_handeler = self.space.add_collision_handler(0, 0)
