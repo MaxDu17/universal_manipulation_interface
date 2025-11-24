@@ -468,9 +468,9 @@ class PushGeneralEnv(gym.Env):
         self.block_radius = bounding_radius
         # self.indicator_circle = self.add_circle((256, 300), bounding_radius)
         self.goal_color = pygame.Color('LightGreen')
-        self.alt_goal_color = pygame.Color('LightBlue')
+        self.alt_goal_color = pygame.Color('Pink')
         self.goal_pose = np.array([256,256,np.pi/4])  # x, y, theta (in radians)
-        self.alt_goal_pose = np.array([75, 75,0])  # x, y, theta (in radians)
+        self.alt_goal_pose = np.array([256, 75,0])  # x, y, theta (in radians)
 
         # Add collision handling
         self.collision_handeler = self.space.add_collision_handler(0, 0)
