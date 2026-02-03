@@ -54,11 +54,13 @@ class BaseWorkspace:
             if hasattr(value, 'state_dict') and hasattr(value, 'load_state_dict'):
                 # modules, optimizers and samplers etc
                 if key not in exclude_keys:
+                    print("[Base Workspace] Saving key ", key)
                     if use_thread:
                         payload['state_dicts'][key] = _copy_to_cpu(value.state_dict())
                     else:
                         payload['state_dicts'][key] = value.state_dict()
             elif key in include_keys:                
+                print("[Base Workspace] Saving key ", key)
                 payload['pickles'][key] = dill.dumps(value)
         if use_thread:
             self._saving_thread = threading.Thread(

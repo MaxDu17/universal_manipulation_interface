@@ -13,6 +13,58 @@ from diffusion_policy.model.diffusion.mask_generator import LowdimMaskGenerator
 from diffusion_policy.model.vision.timm_obs_encoder import TimmObsEncoder
 from diffusion_policy.common.pytorch_util import dict_apply
 
+# for DEBUG 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+torch.set_printoptions(sci_mode=False)
+# copied 
+def rotation_6d_to_matrix(d6: torch.Tensor) -> torch.Tensor:
+    """
+    Converts 6D rotation representation by Zhou et al. [1] to rotation matrix
+    using Gram--Schmidt orthogonalization per Section B of [1].
+    Args:
+        d6: 6D rotation representation, of size (*, 6)
+
+    Returns:
+        batch of rotation matrices of size (*, 3, 3)
+
+    [1] Zhou, Y., Barnes, C., Lu, J., Yang, J., & Li, H.
+    On the Continuity of Rotation Representations in Neural Networks.
+    IEEE Conference on Computer Vision and Pattern Recognition, 2019.
+    Retrieved from http://arxiv.org/abs/1812.07035
+    """
+
+    a1, a2 = d6[..., :3], d6[..., 3:]
+    b1 = F.normalize(a1, dim=-1)
+    b2 = a2 - (b1 * a2).sum(-1, keepdim=True) * b1
+    b2 = F.normalize(b2, dim=-1)
+    b3 = torch.cross(b1, b2, dim=-1)
+    return torch.stack((b1, b2, b3), dim=-2)
+
+def so3_distance(R1, R2):
+    """
+    Geodesic distance between two rotations.
+    R1, R2: (..., 3, 3)
+    returns: (...,)
+    """
+    R_rel = R1.transpose(-1, -2) @ R2
+    trace = R_rel[..., 0, 0] + R_rel[..., 1, 1] + R_rel[..., 2, 2]
+    cos_theta = (trace - 1) / 2
+    cos_theta = torch.clamp(cos_theta, -1.0, 1.0)
+    theta = torch.acos(cos_theta)
+    return theta
+
+
+# def se3_distance_weighted_sum(R1, t1, R2, t2, lambda_rot=1.0):
+#     """
+#     Simple weighted-sum SE(3) distance.
+#     """
+#     d_trans = torch.norm(t1 - t2, dim=-1)
+#     d_rot = so3_distance(R1, R2)
+
+#     return d_trans + lambda_rot * d_rot
+
 
 class DiffusionUnetTimmPolicy(BaseImagePolicy):
     def __init__(self, 
@@ -121,6 +173,7 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
     def add_remove_noise(self, batch, noise_level):
         # this function is an implementation of checking if something is in or out of distribution
         # it adds the specified noise to the batch, then denoises it again and returns the denoised actions 
+        # NOTE: THIS is not the function used to compute OOD score; it is just a debugging tool. The real function is below. 
         assert 'valid_mask' not in batch
         nobs = self.normalizer.normalize(batch['obs'])
         nactions = self.normalizer['action'].normalize(batch['action'])
@@ -135,15 +188,7 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
         # should return action similarity across X diffusion steps 
         # for now, hard code at []
 
-        # # train on multiple diffusion samples per obs
-        # if self.train_diffusion_n_samples != 1:
-        #     # repeat obs features and actions multiple times along the batch dimension
-        #     # each sample will later have a different noise sample, effecty training 
-        #     # more diffusion steps per each obs encoder forward pass
-        #     global_cond = torch.repeat_interleave(global_cond, 
-        #         repeats=self.train_diffusion_n_samples, dim=0)
-        #     nactions = torch.repeat_interleave(nactions, 
-        #         repeats=self.train_diffusion_n_samples, dim=0)
+  
 
         trajectory = nactions
         # Sample noise that we'll add to the images
@@ -156,10 +201,6 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
         # Sample a random timestep for each image
         assert 0 <= noise_level < self.noise_scheduler.config.num_train_timesteps
         timesteps = noise_level * torch.ones((nactions.shape[0],), dtype = torch.long, device = trajectory.device)
-        # timesteps = torch.randint(
-        #     0, self.noise_scheduler.config.num_train_timesteps, 
-        #     (nactions.shape[0],), device=trajectory.device
-        # ).long()
 
         # Add noise to the clean images according to the noise magnitude at each timestep
         # (this is the forward diffusion process)
@@ -168,10 +209,8 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
 
         
         # now, time to denoise! 
-
         scheduler = self.noise_scheduler
-    
-        # set step values
+        # set step value
         scheduler.set_timesteps(self.num_inference_steps)
         start_index = (scheduler.timesteps >= noise_level).nonzero()[-1][0]
 
@@ -190,6 +229,150 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
                 ).prev_sample
         
         return noisy_trajectory 
+    
+    def _visualize_actions(self, noisy_trajectory_original, noisy_trajectory, noise, trajectory, INDEX_TO_VISUALIZE): 
+        p_noisy_orig = noisy_trajectory_original[INDEX_TO_VISUALIZE, :, 0:3].detach().cpu().numpy()
+        p_noisy = noisy_trajectory[INDEX_TO_VISUALIZE, :, 0:3].detach().cpu().numpy()
+        p_noise = noise[INDEX_TO_VISUALIZE, :, 0:3].detach().cpu().numpy()
+        orig_traj = trajectory[INDEX_TO_VISUALIZE, :, 0:3].detach().cpu().numpy() 
+        # Stack them for axis limits
+        points = np.concatenate([p_noisy_orig, p_noisy, p_noise, orig_traj], axis = 0)
+        mins = points.min(axis=0) - 0.1
+        maxs = points.max(axis=0) + 0.1
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(p_noisy_orig[:, 0], p_noisy_orig[:, 1], p_noisy_orig[:, 2], color='blue', label='original + noise')
+        ax.scatter(p_noisy[:, 0], p_noisy[:, 1], p_noisy[:, 2], color='red', label='original + noise DENOISED')
+        ax.scatter(p_noise[:, 0], p_noise[:, 1], p_noise[:, 2], color='green', label='noise')
+        ax.scatter(orig_traj[:, 0], orig_traj[:, 1], orig_traj[:, 2], color='black', label='original')
+        ax.set_xlim([mins[0], maxs[0]])
+        ax.set_ylim([mins[1], maxs[1]])
+        ax.set_zlim([mins[2], maxs[2]])
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.legend()
+        plt.tight_layout()
+
+        # Render rotating video
+        import os
+        import imageio
+
+        frames = []
+        fps = 24
+        n_frames = 72
+        video_path = os.path.join("visuals/", 'rotating_3d.mp4')
+        for i, angle in enumerate(np.linspace(0, 360, n_frames)):
+            ax.view_init(elev=30, azim=angle)
+            frame_path = os.path.join("visuals/", f"frame_{i:03d}.png")
+            plt.savefig(frame_path)
+            frames.append(imageio.imread(frame_path))
+        # Save video
+        imageio.mimsave(video_path, frames, fps=fps)
+        print(f"Saved rotating 3d video to {video_path}")
+
+        # Optionally, cleanup images
+        for i in range(n_frames):
+            try:
+                os.remove(os.path.join("visuals/", f"frame_{i:03d}.png"))
+            except Exception:
+                pass
+
+    def compute_ood_score(self, batch, noise_level, do_stop = False):
+        # in: batch 
+        # out: OOD score per batch element 
+        # do_stop is a debugging technique 
+
+        # this function is an implementation of checking if something is in or out of distribution
+        # it adds the specified noise to the batch, then denoises it again and returns the denoised actions 
+        assert 'valid_mask' not in batch
+        nobs = self.normalizer.normalize(batch['obs'])
+        nactions = self.normalizer['action'].normalize(batch['action'])
+        
+        assert self.obs_as_global_cond
+        global_cond = self.obs_encoder(nobs)
+
+        # HACK : features missing
+        #   1) local conditioning 
+
+        trajectory = nactions
+        # Sample noise that we'll add to the images
+
+        noise = torch.randn(trajectory.shape, device=trajectory.device)
+        # Sample a random timestep for each image
+        assert 0 <= noise_level < self.noise_scheduler.config.num_train_timesteps
+        timesteps = noise_level * torch.ones((nactions.shape[0],), dtype = torch.long, device = trajectory.device)
+
+        # Add noise to the clean images according to the noise magnitude at each timestep
+        # (this is the forward diffusion process)
+        noisy_trajectory = self.noise_scheduler.add_noise(
+            trajectory, noise, timesteps)
+
+        noisy_trajectory_original = noisy_trajectory.clone() # for graphing DEBUG
+        # now, time to denoise! 
+
+        scheduler = self.noise_scheduler
+    
+        # set step values
+        scheduler.set_timesteps(self.num_inference_steps)
+        start_index = (scheduler.timesteps >= noise_level).nonzero()[-1][0]
+        with torch.no_grad(): # so we won't explode the vram 
+            for t in scheduler.timesteps[start_index:]: # this goes from high to low 
+                # 1. apply conditioning
+
+                # 2. predict model output
+                model_output = self.model(noisy_trajectory, t, 
+                    local_cond=None, global_cond=global_cond)
+
+                # 3. compute previous image: x_t -> x_t-1
+                noisy_trajectory = scheduler.step(
+                    model_output, t, noisy_trajectory, 
+                    generator=None,
+                    **self.kwargs
+                    ).prev_sample
+        
+
+      
+        noisy_trajectory_unnorm = self.normalizer['action'].unnormalize(noisy_trajectory).cpu()
+        trajectory_unnorm = batch['action'].cpu()  # This is already unnormalized
+
+        # N x T x D -> N X T X 3 -> N X 3T 
+        assert len(noisy_trajectory_unnorm.shape) == 3, "the logic here is hard-coded to work for chunked actions"
+
+        # this is taking the per-element difference in the chunk and then averaging it across time. 
+        # more correct than taking the flattened norm 
+        d_trans = torch.norm(noisy_trajectory_unnorm[..., 0:3] - trajectory_unnorm[..., 0:3], dim = -1)
+        d_trans = torch.mean(d_trans, dim = 1)
+
+        # d_trans = torch.mean(torch.square(noisy_trajectory_unnorm[..., 0:3].flatten(start_dim = 1) - trajectory_unnorm[..., 0:3].flatten(start_dim = 1)), dim = 1)
+        # d_trans = torch.mean(torch.square(noisy_trajectory_unnorm.flatten(start_dim = 1) - trajectory_unnorm.flatten(start_dim = 1)), dim = 1)
+        
+        if do_stop:
+            # DEBUGGING PURPOSE ONLY TO PROBE INSIDE THE OOD FUNCTION
+            INDEX_TO_VISUALIZE = 0 
+            plt.imsave("visuals/state.png", np.transpose(batch["obs"]["agentview_rgb"][INDEX_TO_VISUALIZE, 0].detach().cpu().numpy(), (1,2,0)))
+            self._visualize_actions(noisy_trajectory_original, noisy_trajectory, noise, trajectory, INDEX_TO_VISUALIZE)
+            import ipdb 
+            ipdb.set_trace()
+       
+        N, T = noisy_trajectory_unnorm.shape[0], noisy_trajectory_unnorm.shape[1]
+
+        # N X T X D -> NT X D 
+        noisy_trajectory_unnorm = noisy_trajectory_unnorm.view(N * T, -1) # torch.flatten(noisy_trajectory_unnorm, start_dim=0, end_dim=1)
+        trajectory_unnorm = trajectory_unnorm.view(N * T, -1) # torch.flatten(trajectory_unnorm, start_dim=0, end_dim=1)
+
+        # NT X D -> NT X 6 
+        n_traj_rot_matrx = rotation_6d_to_matrix(noisy_trajectory_unnorm[:, 3:9])
+        traj_rot_matrx = rotation_6d_to_matrix(trajectory_unnorm[:, 3:9])
+        d_rot = so3_distance(n_traj_rot_matrx, traj_rot_matrx) # NT 
+        d_rot = d_rot.view(N, T) 
+        d_rot_mean = torch.mean(d_rot, dim = 1) # size N 
+
+        lmd = 0.1
+        return d_trans + lmd * d_rot_mean 
+        # return torch.mean(torch.square(noisy_trajectory.flatten(start_dim = 1) - trajectory.flatten(start_dim = 1)), dim = 1).detach()
+        # return total_error.detach() 
 
     def predict_action(self, obs_dict: Dict[str, torch.Tensor], fixed_action_prefix: torch.Tensor=None) -> Dict[str, torch.Tensor]:
         """
@@ -239,17 +422,19 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
     def set_normalizer(self, normalizer: LinearNormalizer):
         self.normalizer.load_state_dict(normalizer.state_dict())
 
-    def compute_obs_representations(self, batch):
+    def compute_obs_representations(self, batch, select_keys = None):
         # this function will return a list of intermediate representation
         assert 'valid_mask' not in batch
         nobs = self.normalizer.normalize(batch['obs'])
         nactions = self.normalizer['action'].normalize(batch['action'])
         
         assert self.obs_as_global_cond
-        
-        global_cond = self.obs_encoder(nobs)
+        if select_keys is not None:
+            global_cond = self.obs_encoder.feature_by_key(nobs, select_keys)
+        else:
+            global_cond = self.obs_encoder(nobs)
         return global_cond 
-    
+
 
     def compute_loss(self, batch, return_intermediates = False,  parallel_intermediates = None, reduce_loss = True):
         # normalize input

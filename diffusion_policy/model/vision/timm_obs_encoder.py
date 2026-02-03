@@ -251,7 +251,38 @@ class TimmObsEncoder(ModuleAttrMixin):
         else:
             assert self.feature_aggregation is None
             return feature
+    
+    # def feature_by_key(self, obs_dict, keys):
+    #     features = list()
+    #     batch_size = next(iter(obs_dict.values())).shape[0]
+    #     # process rgb input
+    #     for key in self.rgb_keys:
+    #         if key in keys:
+    #             img = obs_dict[key]
+    #             B, T = img.shape[:2]
+    #             assert B == batch_size
+    #             assert img.shape[2:] == self.key_shape_map[key]
+    #             img = img.reshape(B*T, *img.shape[2:])
+    #             img = self.key_transform_map[key](img)
+    #             raw_feature = self.key_model_map[key](img)
+    #             feature = self.aggregate_feature(raw_feature)
+    #             assert len(feature.shape) == 2 and feature.shape[0] == B * T
+    #             features.append(feature.reshape(B, -1))
+
+    #     # process lowdim input
+    #     for key in self.low_dim_keys:
+    #         if key in keys:
+    #             data = obs_dict[key]
+    #             B, T = data.shape[:2]
+    #             assert B == batch_size
+    #             assert data.shape[2:] == self.key_shape_map[key]
+    #             features.append(data.reshape(B, -1))
         
+    #     # concatenate all features
+    #     result = torch.cat(features, dim=-1)
+
+    #     return result
+
     def forward(self, obs_dict):
         features = list()
         batch_size = next(iter(obs_dict.values())).shape[0]

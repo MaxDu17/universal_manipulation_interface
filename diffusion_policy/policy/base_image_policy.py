@@ -25,3 +25,4 @@ class BaseImagePolicy(ModuleAttrMixin):
     # no standard training interface except setting normalizer
     def set_normalizer(self, normalizer: LinearNormalizer):
         raise NotImplementedError()
+    

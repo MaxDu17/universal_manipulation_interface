@@ -118,6 +118,7 @@ class AsyncVectorEnv(VectorEnv):
                 _obs_buffer = create_shared_memory(
                     self.single_observation_space, n=self.num_envs, ctx=ctx
                 )
+                self._obs_buffer = _obs_buffer  # Store for cleanup
                 self.observations = read_from_shared_memory(
                     _obs_buffer, self.single_observation_space, n=self.num_envs
                 )
@@ -132,6 +133,7 @@ class AsyncVectorEnv(VectorEnv):
                 )
         else:
             _obs_buffer = None
+            self._obs_buffer = None
             self.observations = create_empty_array(
                 self.single_observation_space, n=self.num_envs, fn=np.zeros
             )
@@ -345,6 +347,85 @@ class AsyncVectorEnv(VectorEnv):
                 pipe.close()
         for process in self.processes:
             process.join()
+        
+        # Additional cleanup to free memory
+        # self._cleanup_resources()
+
+    # def _cleanup_resources(self):
+    #     """
+    #     Explicitly clean up all allocated resources to free RAM.
+    #     This method should be called during close() to ensure proper memory cleanup.
+    #     """
+    #     # Clear shared memory buffer if it exists
+    #     if hasattr(self, '_obs_buffer') and self._obs_buffer is not None:
+    #         try:
+    #             # _obs_buffer can be a list, dict, or single SharedMemory object
+    #             # depending on the observation space structure
+    #             if isinstance(self._obs_buffer, (list, tuple)):
+    #                 for item in self._obs_buffer:
+    #                     self._cleanup_shared_memory_item(item)
+    #             elif isinstance(self._obs_buffer, dict):
+    #                 for item in self._obs_buffer.values():
+    #                     self._cleanup_shared_memory_item(item)
+    #             else:
+    #                 self._cleanup_shared_memory_item(self._obs_buffer)
+    #         except Exception:
+    #             pass
+    #         finally:
+    #             self._obs_buffer = None
+        
+    #     # Clear observations array
+    #     if hasattr(self, 'observations'):
+    #         del self.observations
+    #         self.observations = None
+        
+    #     # Clear error queue
+    #     if hasattr(self, 'error_queue') and self.error_queue is not None:
+    #         try:
+    #             # Drain the error queue
+    #             while not self.error_queue.empty():
+    #                 try:
+    #                     self.error_queue.get_nowait()
+    #                 except Exception:
+    #                     break
+    #         except Exception:
+    #             pass
+    #         finally:
+    #             self.error_queue = None
+        
+    #     # Clear environment function references
+    #     if hasattr(self, 'env_fns'):
+    #         del self.env_fns
+    #         self.env_fns = None
+        
+    #     # Clear pipe and process references
+    #     if hasattr(self, 'parent_pipes'):
+    #         self.parent_pipes = []
+    #     if hasattr(self, 'processes'):
+    #         self.processes = []
+        
+    #     # Reset state
+    #     self._state = AsyncState.DEFAULT
+    
+    # def _cleanup_shared_memory_item(self, item):
+    #     """Helper method to clean up a single shared memory item."""
+    #     if item is None:
+    #         return
+    #     try:
+    #         # Try to unlink shared memory if it's a SharedMemory object
+    #         if hasattr(item, 'unlink'):
+    #             try:
+    #                 item.unlink()
+    #             except (FileNotFoundError, OSError):
+    #                 pass  # Already unlinked or doesn't exist
+    #         # Close shared memory if it has a close method
+    #         if hasattr(item, 'close'):
+    #             try:
+    #                 item.close()
+    #             except Exception:
+    #                 pass
+    #     except Exception:
+    #         pass
 
     def _poll(self, timeout=None):
         self._assert_is_running()
@@ -561,7 +642,18 @@ class AsyncVectorEnv(VectorEnv):
 
     def render(self, *args, **kwargs):
         return self.call('render', *args, **kwargs)
-
+    
+    # def cleanup(self):
+    #     """
+    #     Public method to explicitly clean up all allocated resources to free RAM.
+    #     This can be called independently before close() if you want to free memory
+    #     while keeping the environment object alive (though it won't be usable after).
+        
+    #     Note: This is automatically called by close(), so you typically don't need
+    #     to call this separately unless you want to free memory before closing.
+    #     """
+    #     if not self.closed:
+    #         self._cleanup_resources()
 
 
 def _worker(index, env_fn, pipe, parent_pipe, shared_memory, error_queue):
