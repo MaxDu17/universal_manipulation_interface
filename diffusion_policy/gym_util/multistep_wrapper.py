@@ -151,6 +151,15 @@ class MultiStepWrapper(gym.Wrapper):
     def get_attr(self, name):
         return getattr(self, name)
 
+    def check_success_multi_bddl(self, bddl_paths):
+        """Forward to underlying BDDL env; used for multi-task success evaluation."""
+        env = self.env
+        while env is not None:
+            if hasattr(env, "check_success_multi_bddl"):
+                return env.check_success_multi_bddl(bddl_paths)
+            env = getattr(env, "env", None)
+        raise AttributeError("No underlying env with check_success_multi_bddl")
+
     def run_dill_function(self, dill_fn):
         fn = dill.loads(dill_fn)
         return fn(self)

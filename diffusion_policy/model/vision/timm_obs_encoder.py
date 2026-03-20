@@ -1,3 +1,7 @@
+# IF YOU ARE LOOKING AT THIS FILE, IT'S LIKELY NOT THE RIGHT FILE TO EDIT!!!!!!
+# ###### 
+# BEWARE 
+# #####
 import copy
 
 import timm
@@ -308,6 +312,7 @@ class TimmObsEncoder(ModuleAttrMixin):
             features.append(data.reshape(B, -1))
         
         # concatenate all features
+        # concatenate all features
         result = torch.cat(features, dim=-1)
 
         return result
@@ -327,8 +332,32 @@ class TimmObsEncoder(ModuleAttrMixin):
         example_output = self.forward(example_obs_dict)
         assert len(example_output.shape) == 2
         assert example_output.shape[0] == 1
-        
         return example_output.shape
+    
+    # @torch.no_grad()
+    # def output_shape(self):
+    #     example_obs_dict = dict()
+    #     obs_shape_meta = self.shape_meta['obs']
+    #     for key, attr in obs_shape_meta.items():
+    #         shape = tuple(attr['shape'])
+    #         # Use int64 for task_language when using finetuned encoder (token IDs)
+    #         if key == 'task_language' and self.use_finetuned_language_encoder:
+    #             dtype = torch.int64
+    #         else:
+    #             dtype = self.dtype
+    #         this_obs = torch.zeros(
+    #             (1, attr['horizon']) + shape, 
+    #             dtype=dtype,
+    #             device=self.device)
+    #         example_obs_dict[key] = this_obs
+    #     example_output, _ = self.forward(example_obs_dict)
+    #     if self.flatten_time_dimension:
+    #         assert len(example_output.shape) == 2
+    #     else:
+    #         assert len(example_output.shape) == 3
+    #     assert example_output.shape[0] == 1
+        
+    #     return example_output.shape
 
 
 if __name__=='__main__':

@@ -422,15 +422,16 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
     def set_normalizer(self, normalizer: LinearNormalizer):
         self.normalizer.load_state_dict(normalizer.state_dict())
 
-    def compute_obs_representations(self, batch, select_keys = None):
+    def compute_obs_representations(self, batch, select_keys = None, return_as_dict = False):
         # this function will return a list of intermediate representation
         assert 'valid_mask' not in batch
         nobs = self.normalizer.normalize(batch['obs'])
         nactions = self.normalizer['action'].normalize(batch['action'])
-        
         assert self.obs_as_global_cond
         if select_keys is not None:
             global_cond = self.obs_encoder.feature_by_key(nobs, select_keys)
+        elif return_as_dict:
+            return {k : self.obs_encoder.feature_by_key(nobs, k) for k in nobs.keys()}
         else:
             global_cond = self.obs_encoder(nobs)
         return global_cond 

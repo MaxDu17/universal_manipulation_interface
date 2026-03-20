@@ -57,6 +57,12 @@ class LinearNormalizer(DictOfTensorMixin):
             for key, value in x.items():
                 params = self.params_dict[key]
                 result[key] = _normalize(value, params, forward=forward)
+                # if key in self.params_dict:
+                #     params = self.params_dict[key]
+                #     result[key] = _normalize(value, params, forward=forward)
+                # else:
+                #     result[key] = value 
+                    # TODO: THIS IS NOT GOOD PRACTICE 
             return result
         else:
             if '_default' not in self.params_dict:

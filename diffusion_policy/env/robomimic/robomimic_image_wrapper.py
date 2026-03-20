@@ -59,6 +59,8 @@ class RobomimicImageWrapper(gym.Env):
             observation_space[key] = this_space
         self.observation_space = observation_space
 
+    def get_sim_state(self):
+        return self.env.get_sim_state()
 
     def get_observation(self, raw_obs=None):
         if raw_obs is None:
