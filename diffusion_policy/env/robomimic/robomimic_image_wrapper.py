@@ -77,7 +77,13 @@ class RobomimicImageWrapper(gym.Env):
     def seed(self, seed=None):
         np.random.seed(seed=seed)
         self._seed = seed
-    
+
+    def register_init_state(self, init_state):
+        """Same contract as LIBERO ControlEnv: optional mujoco state applied on the next reset()."""
+        self.init_state = init_state
+        if init_state is None:
+            self.has_reset_before = False
+
     def reset(self):
         if self.init_state is not None:
             if not self.has_reset_before:

@@ -94,6 +94,35 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
         # get feature dim
         obs_feature_dim = np.prod(obs_encoder.output_shape())
 
+        # Per-arm/component layout for OOD scoring and logging (pos/rot/gripper).
+        # Examples: single-arm [pos, rot, gripper_width]; bimanual [left_*, right_*].
+        action_components = shape_meta['action']['components']
+        action_component_slices = []
+        offset = 0
+        for component in action_components:
+            ctype = component['type']
+            csize = int(component['size'])
+            if ctype == 'pos' or ctype.endswith('_pos'):
+                role = 'pos'
+            elif 'rot' in ctype:
+                role = 'rot'
+                assert csize == 6, f"Expected rot6d size 6 for component {ctype}, got {csize}"
+            elif 'gripper' in ctype:
+                role = 'gripper'
+            else:
+                raise ValueError(f"Unrecognized action component type: {ctype}")
+            action_component_slices.append((role, offset, offset + csize))
+            offset += csize
+        assert offset == action_dim, (
+            f"action_components sum to dim {offset} but action shape is {action_dim}"
+        )
+        assert any(role == 'pos' for role, _, _ in action_component_slices), (
+            "action_components must include at least one position component for OOD scoring"
+        )
+        assert any(role == 'rot' for role, _, _ in action_component_slices), (
+            "action_components must include at least one rotation component for OOD scoring"
+        )
+
 
         # create diffusion model
         assert obs_as_global_cond
@@ -118,6 +147,7 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
         self.obs_feature_dim = obs_feature_dim
         self.action_dim = action_dim
         self.action_horizon = action_horizon # used for training
+        self.action_component_slices = action_component_slices
         self.obs_as_global_cond = obs_as_global_cond
         self.input_pertub = input_pertub
         self.inpaint_fixed_action_prefix = inpaint_fixed_action_prefix
@@ -286,68 +316,82 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
 
         # this function is an implementation of checking if something is in or out of distribution
         # it adds the specified noise to the batch, then denoises it again and returns the denoised actions 
-        assert 'valid_mask' not in batch
-        nobs = self.normalizer.normalize(batch['obs'])
-        nactions = self.normalizer['action'].normalize(batch['action'])
-        
-        assert self.obs_as_global_cond
-        global_cond = self.obs_encoder(nobs)
+        with torch.no_grad():
+            assert 'valid_mask' not in batch
+            nobs = self.normalizer.normalize(batch['obs'])
+            nactions = self.normalizer['action'].normalize(batch['action'])
+            
+            assert self.obs_as_global_cond
+            global_cond = self.obs_encoder(nobs)
 
-        # HACK : features missing
-        #   1) local conditioning 
+            # HACK : features missing
+            #   1) local conditioning 
 
-        trajectory = nactions
-        # Sample noise that we'll add to the images
+            trajectory = nactions
+            # Sample noise that we'll add to the images
+            noise = torch.randn(trajectory.shape, device=trajectory.device)
+            # Sample a fixed timestep for each sample in the batch
+            assert 0 <= noise_level < self.noise_scheduler.config.num_train_timesteps
+            timesteps = noise_level * torch.ones((nactions.shape[0],), dtype = torch.long, device = trajectory.device)
 
-        noise = torch.randn(trajectory.shape, device=trajectory.device)
-        # Sample a random timestep for each image
-        assert 0 <= noise_level < self.noise_scheduler.config.num_train_timesteps
-        timesteps = noise_level * torch.ones((nactions.shape[0],), dtype = torch.long, device = trajectory.device)
+            # Add noise to the clean actions according to the selected timestep
+            noisy_trajectory = self.noise_scheduler.add_noise(
+                trajectory, noise, timesteps)
 
-        # Add noise to the clean images according to the noise magnitude at each timestep
-        # (this is the forward diffusion process)
-        noisy_trajectory = self.noise_scheduler.add_noise(
-            trajectory, noise, timesteps)
-
-        noisy_trajectory_original = noisy_trajectory.clone() # for graphing DEBUG
-        # now, time to denoise! 
-
-        scheduler = self.noise_scheduler
-    
-        # set step values
-        scheduler.set_timesteps(self.num_inference_steps)
-        start_index = (scheduler.timesteps >= noise_level).nonzero()[-1][0]
-        with torch.no_grad(): # so we won't explode the vram 
+            noisy_trajectory_original = noisy_trajectory.clone() # for graphing DEBUG
+            scheduler = self.noise_scheduler
+            scheduler.set_timesteps(self.num_inference_steps)
+            start_index = (scheduler.timesteps >= noise_level).nonzero()[-1][0]
             for t in scheduler.timesteps[start_index:]: # this goes from high to low 
-                # 1. apply conditioning
-
-                # 2. predict model output
                 model_output = self.model(noisy_trajectory, t, 
                     local_cond=None, global_cond=global_cond)
-
-                # 3. compute previous image: x_t -> x_t-1
                 noisy_trajectory = scheduler.step(
                     model_output, t, noisy_trajectory, 
                     generator=None,
                     **self.kwargs
                     ).prev_sample
         
-
-      
-        noisy_trajectory_unnorm = self.normalizer['action'].unnormalize(noisy_trajectory).cpu()
-        trajectory_unnorm = batch['action'].cpu()  # This is already unnormalized
+            noisy_trajectory_unnorm = self.normalizer['action'].unnormalize(noisy_trajectory).cpu()
+            trajectory_unnorm = batch['action'].cpu()  # This is already unnormalized
 
         # N x T x D -> N X T X 3 -> N X 3T 
         assert len(noisy_trajectory_unnorm.shape) == 3, "the logic here is hard-coded to work for chunked actions"
 
-        # this is taking the per-element difference in the chunk and then averaging it across time. 
-        # more correct than taking the flattened norm 
-        d_trans = torch.norm(noisy_trajectory_unnorm[..., 0:3] - trajectory_unnorm[..., 0:3], dim = -1)
-        d_trans = torch.mean(d_trans, dim = 1)
+        N, T, D = noisy_trajectory_unnorm.shape
+        assert D == self.action_dim, (
+            f"OOD score expected action dim {self.action_dim}, got {D}"
+        )
 
-        # d_trans = torch.mean(torch.square(noisy_trajectory_unnorm[..., 0:3].flatten(start_dim = 1) - trajectory_unnorm[..., 0:3].flatten(start_dim = 1)), dim = 1)
-        # d_trans = torch.mean(torch.square(noisy_trajectory_unnorm.flatten(start_dim = 1) - trajectory_unnorm.flatten(start_dim = 1)), dim = 1)
-        
+        # Accumulate translation / rotation distances across all arms/components.
+        # Gripper dims are intentionally excluded from the OOD score.
+        d_trans_terms = []
+        d_rot_terms = []
+
+
+        for role, start, end in self.action_component_slices:
+            if role == 'pos':
+                d = torch.norm(
+                    noisy_trajectory_unnorm[..., start:end] - trajectory_unnorm[..., start:end],
+                    dim=-1,
+                )  # (N, T)
+                d_trans_terms.append(torch.mean(d, dim=1))  # (N,)
+            elif role == 'rot':
+                pred_flat = noisy_trajectory_unnorm[..., start:end].reshape(N * T, end - start)
+                gt_flat = trajectory_unnorm[..., start:end].reshape(N * T, end - start)
+                d_rot = so3_distance(
+                    rotation_6d_to_matrix(pred_flat),
+                    rotation_6d_to_matrix(gt_flat),
+                ).view(N, T)
+                d_rot_terms.append(torch.mean(d_rot, dim=1))  # (N,)
+            elif role == 'gripper':
+                continue
+            else:
+                raise ValueError(f"Unexpected action component role: {role}")
+
+        assert len(d_trans_terms) > 0 and len(d_rot_terms) > 0
+        d_trans = torch.stack(d_trans_terms, dim=0).mean(dim=0)
+        d_rot_mean = torch.stack(d_rot_terms, dim=0).mean(dim=0)
+
         if do_stop:
             # DEBUGGING PURPOSE ONLY TO PROBE INSIDE THE OOD FUNCTION
             INDEX_TO_VISUALIZE = 0 
@@ -355,19 +399,6 @@ class DiffusionUnetTimmPolicy(BaseImagePolicy):
             self._visualize_actions(noisy_trajectory_original, noisy_trajectory, noise, trajectory, INDEX_TO_VISUALIZE)
             import ipdb 
             ipdb.set_trace()
-       
-        N, T = noisy_trajectory_unnorm.shape[0], noisy_trajectory_unnorm.shape[1]
-
-        # N X T X D -> NT X D 
-        noisy_trajectory_unnorm = noisy_trajectory_unnorm.view(N * T, -1) # torch.flatten(noisy_trajectory_unnorm, start_dim=0, end_dim=1)
-        trajectory_unnorm = trajectory_unnorm.view(N * T, -1) # torch.flatten(trajectory_unnorm, start_dim=0, end_dim=1)
-
-        # NT X D -> NT X 6 
-        n_traj_rot_matrx = rotation_6d_to_matrix(noisy_trajectory_unnorm[:, 3:9])
-        traj_rot_matrx = rotation_6d_to_matrix(trajectory_unnorm[:, 3:9])
-        d_rot = so3_distance(n_traj_rot_matrx, traj_rot_matrx) # NT 
-        d_rot = d_rot.view(N, T) 
-        d_rot_mean = torch.mean(d_rot, dim = 1) # size N 
 
         lmd = 0.1
         return d_trans + lmd * d_rot_mean 
